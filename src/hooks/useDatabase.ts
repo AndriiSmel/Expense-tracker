@@ -7,7 +7,7 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import * as SQLite from 'expo-sqlite';
 import { DB_NAME } from '../core/constants';
-import { initDatabase } from '../core/database';
+import { initDatabase, recordDueRecurringExpenses } from '../core/database';
 
 // ─── Context ─────────────────────────────────────────────────────────
 
@@ -40,6 +40,7 @@ export function useDatabase(): UseDatabaseResult {
   useEffect(() => {
     try {
       initDatabase(db);
+      recordDueRecurringExpenses(db);
       setIsReady(true);
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));

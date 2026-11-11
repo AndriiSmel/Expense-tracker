@@ -3,10 +3,9 @@ import {
   View,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
-  Platform,
-  StatusBar,
+  AppState,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
@@ -15,13 +14,16 @@ import { useExpenses } from '../src/hooks/useExpenses';
 import { useBudget } from '../src/hooks/useBudget';
 import { useCategories } from '../src/hooks/useCategories';
 import { useMonthSummary } from '../src/hooks/useMonthSummary';
+import { usePreferences } from '../src/hooks/usePreferences';
+import { useDB } from '../src/hooks/useDatabase';
+import { recordDueRecurringExpenses } from '../src/core/database';
 
 import {
   ExpenseWithCategory,
   ExpenseInput,
+  RepeatFrequency,
 } from '../src/core/types';
 import { getCurrentMonthKey } from '../src/utils/formatters';
-import { DEFAULT_BUDGET_CENTS } from '../src/core/constants';
 
 import Header from '../src/components/Header';
 import MonthSelector from '../src/components/MonthSelector';
@@ -35,7 +37,9 @@ import ExpenseBottomSheet from '../src/components/ExpenseBottomSheet';
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const db = useDB();
   const { colors } = useAppTheme();
+  const { defaultBudgetCents } = usePreferences();
 
   // State
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthKey());
@@ -58,6 +62,7 @@ export default function DashboardScreen() {
   const {
     budget,
     setBudget,
+    clearBudget,
     refresh: refreshBudget,
   } = useBudget(selectedMonth);
 
@@ -74,11 +79,19 @@ export default function DashboardScreen() {
   // Auto-refresh when dashboard is focused (e.g. returning from Settings)
   useFocusEffect(
     useCallback(() => {
-      refreshExpenses();
-      refreshBudget();
-      refreshCategories();
-      refreshSummary();
-    }, [refreshExpenses, refreshBudget, refreshCategories, refreshSummary]),
+      const refreshDashboard = () => {
+        recordDueRecurringExpenses(db);
+        refreshExpenses();
+        refreshBudget();
+        refreshCategories();
+        refreshSummary();
+      };
+      refreshDashboard();
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') refreshDashboard();
+      });
+      return () => subscription.remove();
+    }, [db, refreshExpenses, refreshBudget, refreshCategories, refreshSummary]),
   );
 
   // Month change
@@ -88,7 +101,7 @@ export default function DashboardScreen() {
   };
 
   // Budget management
-  const currentBudgetCents = budget ? budget.budgetCents : DEFAULT_BUDGET_CENTS;
+  const currentBudgetCents = budget?.budgetCents ?? defaultBudgetCents;
 
   const handleSaveBudget = (newBudgetCents: number) => {
     setBudget(newBudgetCents);
@@ -119,11 +132,11 @@ export default function DashboardScreen() {
   };
 
   // Save Expense (Create or Update)
-  const handleSaveExpense = (input: ExpenseInput) => {
+  const handleSaveExpense = (input: ExpenseInput, repeat?: RepeatFrequency) => {
     if (editingExpense) {
       updateExpense(editingExpense.id, input);
     } else {
-      addExpense(input);
+      addExpense(input, repeat);
     }
     refreshSummary();
     try {
@@ -220,9 +233,14 @@ export default function DashboardScreen() {
         {/* Budget Edit Modal */}
         <BudgetEditModal
           colors={colors}
+          title="Edit Budget for This Month"
           visible={budgetModalVisible}
           currentBudgetCents={currentBudgetCents}
           onSave={handleSaveBudget}
+          onUseDefault={budget ? () => {
+            clearBudget();
+            refreshSummary();
+          } : undefined}
           onClose={() => setBudgetModalVisible(false)}
         />
 
@@ -244,7 +262,6 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   container: {
     flex: 1,

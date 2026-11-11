@@ -3,39 +3,36 @@
  * Portable — no React Native dependencies.
  */
 
-/**
- * Format cents to a display string with euro symbol.
- * Correctly positions the negative sign before the currency symbol:
- * Example: 15099 → "€150.99", -15099 → "-€150.99"
- */
-export function formatCurrency(cents: number): string {
+import { CURRENCY_SYMBOLS, CurrencyCode, DEFAULT_CURRENCY } from '../core/constants';
+
+/** Format cents with the selected currency symbol. */
+export function formatCurrency(cents: number, currency: CurrencyCode = DEFAULT_CURRENCY): string {
   const isNegative = cents < 0;
-  const absEuros = Math.abs(cents) / 100;
-  const formatted = absEuros.toLocaleString('de-DE', {
+  const formatted = (Math.abs(cents) / 100).toLocaleString('de-DE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${isNegative ? '-' : ''}€${formatted}`;
+  return `${isNegative ? '-' : ''}${CURRENCY_SYMBOLS[currency]}${formatted}`;
 }
 
 /**
  * Format cents to a compact display (no decimals for whole amounts).
  * Example: 15000 → "€150", 15099 → "€150.99", -15000 → "-€150"
  */
-export function formatCurrencyCompact(cents: number): string {
+export function formatCurrencyCompact(cents: number, currency: CurrencyCode = DEFAULT_CURRENCY): string {
   const isNegative = cents < 0;
   const absCents = Math.abs(cents);
-  const absEuros = absCents / 100;
+  const amount = absCents / 100;
   const formatted = absCents % 100 === 0
-    ? absEuros.toLocaleString('de-DE', {
+    ? amount.toLocaleString('de-DE', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       })
-    : absEuros.toLocaleString('de-DE', {
+    : amount.toLocaleString('de-DE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
-  return `${isNegative ? '-' : ''}€${formatted}`;
+  return `${isNegative ? '-' : ''}${CURRENCY_SYMBOLS[currency]}${formatted}`;
 }
 
 /**

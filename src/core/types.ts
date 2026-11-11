@@ -64,6 +64,18 @@ export interface ExpenseInput {
   note: string | null;
 }
 
+export type RepeatUnit = 'day' | 'week' | 'month' | 'year';
+
+export interface RepeatFrequency {
+  interval: number;
+  unit: RepeatUnit;
+}
+
+export interface RecurringExpense extends ExpenseInput, RepeatFrequency {
+  id: string;
+  nextDate: string;
+}
+
 export interface CategoryInput {
   name: string;
   color: string;
@@ -78,6 +90,7 @@ export interface BackupData {
   expenses: Expense[];
   categories: Category[];
   budgets: MonthlyBudget[];
+  recurringExpenses?: RecurringExpense[];
 }
 
 // ─── Theme Types ─────────────────────────────────────────────────────

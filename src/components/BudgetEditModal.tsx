@@ -12,12 +12,16 @@ import {
 import { ThemeColors } from '../core/types';
 import { typography, spacing, radius } from '../theme/theme';
 import { parseAmountToCents } from '../utils/formatters';
+import { CURRENCY_SYMBOLS } from '../core/constants';
+import { usePreferences } from '../hooks/usePreferences';
 
 interface BudgetEditModalProps {
   colors: ThemeColors;
   visible: boolean;
   currentBudgetCents: number;
+  title: string;
   onSave: (cents: number) => void;
+  onUseDefault?: () => void;
   onClose: () => void;
 }
 
@@ -25,9 +29,12 @@ export default function BudgetEditModal({
   colors,
   visible,
   currentBudgetCents,
+  title,
   onSave,
+  onUseDefault,
   onClose,
 }: BudgetEditModalProps) {
+  const { currency } = usePreferences();
   const [value, setValue] = useState('');
 
   useEffect(() => {
@@ -53,10 +60,10 @@ export default function BudgetEditModal({
         style={[styles.overlay, { backgroundColor: colors.overlay }]}
       >
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Edit Monthly Budget</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
 
           <View style={[styles.inputContainer, { borderColor: colors.border }]}>
-            <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>€</Text>
+            <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>{CURRENCY_SYMBOLS[currency]}</Text>
             <TextInput
               style={[styles.input, { color: colors.text }]}
               value={value}
@@ -94,6 +101,17 @@ export default function BudgetEditModal({
               </Text>
             </TouchableOpacity>
           </View>
+          {onUseDefault && (
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                onUseDefault();
+                onClose();
+              }}
+            >
+              <Text style={[styles.buttonText, { color: colors.primary }]}>Use default budget</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>

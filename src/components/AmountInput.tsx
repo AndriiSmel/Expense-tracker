@@ -16,6 +16,7 @@ export default function AmountInput({
   onChange,
   autoFocus = true,
 }: AmountInputProps) {
+  const { currency } = usePreferences();
   const handleChangeText = (text: string) => {
     // Replace comma with period for numeric check
     let normalized = text.replace(',', '.');
@@ -33,7 +34,7 @@ export default function AmountInput({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.surfaceSecondary }]}>
-      <Text style={[styles.currencyPrefix, { color: colors.textSecondary }]}>€</Text>
+      <Text style={[styles.currencyPrefix, { color: colors.textSecondary }]}>{CURRENCY_SYMBOLS[currency]}</Text>
       <TextInput
         style={[styles.input, { color: colors.text }]}
         value={value}
@@ -72,3 +73,5 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 });
+import { usePreferences } from '../hooks/usePreferences';
+import { CURRENCY_SYMBOLS } from '../core/constants';

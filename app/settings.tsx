@@ -1,23 +1,26 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
-  Platform,
-  StatusBar,
   Alert,
+  AppState,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAppTheme } from '../src/hooks/useAppTheme';
 import { useCategories } from '../src/hooks/useCategories';
 import { useDB } from '../src/hooks/useDatabase';
+import { usePreferences } from '../src/hooks/usePreferences';
 
-import { Category, CategoryInput, ThemeMode } from '../src/core/types';
+import { CURRENCY_SYMBOLS, CurrencyCode } from '../src/core/constants';
+import { Category, CategoryInput, RecurringExpense, ThemeMode } from '../src/core/types';
+import { getRecurringExpenses, recordDueRecurringExpenses, stopRecurringExpense } from '../src/core/database';
+import { formatRepeatFrequency } from '../src/core/recurrence';
 import { typography, spacing, radius, shadows } from '../src/theme/theme';
 import {
   shareBackupJSON,
@@ -27,11 +30,31 @@ import {
 
 import CategoryEditModal from '../src/components/CategoryEditModal';
 import ConfirmModal from '../src/components/ConfirmModal';
+import BudgetEditModal from '../src/components/BudgetEditModal';
+import { formatCurrency, formatDate } from '../src/utils/formatters';
+
+const currencyOptions = Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[];
 
 export default function SettingsScreen() {
   const router = useRouter();
   const db = useDB();
   const { colors, mode, setMode } = useAppTheme();
+  const { currency, defaultBudgetCents, saveCurrency, saveDefaultBudget } = usePreferences();
+  const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+  const [currencyExpanded, setCurrencyExpanded] = useState(false);
+  const [recurringExpenses, setRecurringExpenses] = useState(() => getRecurringExpenses(db));
+
+  useFocusEffect(useCallback(() => {
+    const refreshSchedules = () => {
+      recordDueRecurringExpenses(db);
+      setRecurringExpenses(getRecurringExpenses(db));
+    };
+    refreshSchedules();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshSchedules();
+    });
+    return () => subscription.remove();
+  }, [db]));
   const {
     categories,
     createCategory,
@@ -68,6 +91,20 @@ export default function SettingsScreen() {
     }
   };
 
+  const confirmStopRecurring = (rule: RecurringExpense) => {
+    Alert.alert('Stop recurring expense?', 'Expenses already recorded will stay in your history.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Stop repeating',
+        style: 'destructive',
+        onPress: () => {
+          stopRecurringExpense(db, rule.id);
+          setRecurringExpenses(getRecurringExpenses(db));
+        },
+      },
+    ]);
+  };
+
   // Backups
   const handleExportJSON = async () => {
     try {
@@ -101,9 +138,10 @@ export default function SettingsScreen() {
       }
       if (result.valid) {
         refreshCategories();
+        setRecurringExpenses(getRecurringExpenses(db));
         Alert.alert(
           'Backup Restored',
-          'Your expenses, categories, and budgets have been restored successfully.',
+          'Your expenses, recurring schedules, categories, and budgets have been restored.',
         );
       } else {
         Alert.alert('Import Failed', result.error || 'The backup file is invalid.');
@@ -137,7 +175,108 @@ export default function SettingsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* 1. Appearance / Theme */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>BUDGET & CURRENCY</Text>
+            <View style={[styles.card, { backgroundColor: colors.surface }, shadows.card]}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setBudgetModalVisible(true)}
+                style={styles.themeOptionRow}
+              >
+                <View style={styles.preferenceLabel}>
+                  <Text style={[styles.optionLabel, { color: colors.text }]}>Default monthly budget</Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    Used for months without a custom budget.
+                  </Text>
+                </View>
+                <Text style={[styles.optionLabel, { color: colors.primary }]}>
+                  {formatCurrency(defaultBudgetCents, currency)}
+                </Text>
+              </TouchableOpacity>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ expanded: currencyExpanded }}
+                onPress={() => setCurrencyExpanded((expanded) => !expanded)}
+                style={styles.themeOptionRow}
+              >
+                <View style={styles.preferenceLabel}>
+                  <Text style={[styles.optionLabel, { color: colors.text }]}>Currency</Text>
+                  <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                    Changes the currency shown for all amounts.
+                  </Text>
+                </View>
+                <Text style={[styles.optionLabel, { color: colors.primary }]}>{currency}</Text>
+                <MaterialCommunityIcons
+                  name={currencyExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {currencyExpanded && currencyOptions.map((code) => (
+                <React.Fragment key={code}>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <TouchableOpacity
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: code === currency }}
+                    onPress={() => {
+                      saveCurrency(code);
+                      setCurrencyExpanded(false);
+                    }}
+                    style={styles.themeOptionRow}
+                  >
+                    <Text style={[styles.optionLabel, { color: colors.text }]}>{code}</Text>
+                    <Text style={[styles.optionLabel, { color: colors.textSecondary }]}>
+                      {CURRENCY_SYMBOLS[code].trim() === code ? '' : CURRENCY_SYMBOLS[code]}
+                    </Text>
+                    {code === currency && (
+                      <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                </React.Fragment>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>RECURRING EXPENSES</Text>
+            <View style={[styles.card, { backgroundColor: colors.surface }, shadows.card]}>
+              {recurringExpenses.length === 0 ? (
+                <Text style={[styles.recurringEmpty, { color: colors.textSecondary }]}>
+                  Turn on Repeat expense when adding an expense to set up a schedule.
+                </Text>
+              ) : recurringExpenses.map((rule, index) => {
+                const category = categories.find((item) => item.id === rule.categoryId)?.name ?? 'Uncategorized';
+                return (
+                  <React.Fragment key={rule.id}>
+                    {index > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
+                    <View style={styles.themeOptionRow}>
+                      <View style={styles.preferenceLabel}>
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {formatCurrency(rule.amountCents, currency)} · {category}
+                        </Text>
+                        {!!rule.note && (
+                          <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>{rule.note}</Text>
+                        )}
+                        <Text style={[styles.preferenceDescription, { color: colors.textSecondary }]}>
+                          {formatRepeatFrequency(rule)} · Next {formatDate(rule.nextDate)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        onPress={() => confirmStopRecurring(rule)}
+                        hitSlop={8}
+                      >
+                        <Text style={[styles.optionLabel, { color: colors.danger }]}>Stop</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Appearance / Theme */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
               APPEARANCE
@@ -424,6 +563,15 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
 
+        <BudgetEditModal
+          colors={colors}
+          visible={budgetModalVisible}
+          title="Default Monthly Budget"
+          currentBudgetCents={defaultBudgetCents}
+          onSave={saveDefaultBudget}
+          onClose={() => setBudgetModalVisible(false)}
+        />
+
         {/* Category Edit / Create Modal */}
         <CategoryEditModal
           colors={colors}
@@ -441,7 +589,7 @@ export default function SettingsScreen() {
           colors={colors}
           visible={importConfirmVisible}
           title="Restore Backup?"
-          message="Restoring from a backup will replace your current expenses, categories, and budgets with the data from the backup file. This cannot be undone."
+          message="Restoring from a backup will replace your expenses, recurring schedules, categories, and budgets with the data from the backup file. This cannot be undone."
           confirmLabel="Choose Backup File"
           confirmDestructive={true}
           onConfirm={handleImportBackup}
@@ -455,7 +603,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   container: {
     flex: 1,
@@ -523,6 +670,18 @@ const styles = StyleSheet.create({
   optionLabel: {
     ...typography.body,
     fontWeight: '500',
+  },
+  preferenceLabel: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  preferenceDescription: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  recurringEmpty: {
+    ...typography.body,
+    padding: spacing.lg,
   },
   radioCircle: {
     width: 22,

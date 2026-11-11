@@ -12,6 +12,7 @@ interface ExpenseItemProps {
 }
 
 export default function ExpenseItem({ colors, expense, onPress }: ExpenseItemProps) {
+  const { currency } = usePreferences();
   return (
     <Pressable
       onPress={() => onPress(expense)}
@@ -52,7 +53,7 @@ export default function ExpenseItem({ colors, expense, onPress }: ExpenseItemPro
       {/* Date + amount */}
       <View style={styles.rightSection}>
         <Text style={[styles.amount, { color: colors.text }]}>
-          {formatCurrency(expense.amountCents)}
+          {formatCurrency(expense.amountCents, currency)}
         </Text>
         <Text style={[styles.date, { color: colors.textSecondary }]}>
           {formatDateShort(expense.date)}
@@ -101,3 +102,4 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+import { usePreferences } from '../hooks/usePreferences';

@@ -3,16 +3,10 @@
     "name": "Expense Tracker",
     "slug": "expense-tracker",
     "version": "1.0.0",
-    "sdkVersion": "52.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "expense-tracker",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "backgroundColor": "#4F46E5",
-      "resizeMode": "contain"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.personal.expensetracker",
@@ -31,7 +25,14 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#4F46E5",
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "updates": {
       "enabled": false

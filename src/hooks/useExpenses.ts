@@ -3,10 +3,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { ExpenseWithCategory, ExpenseInput } from '../core/types';
+import { ExpenseWithCategory, ExpenseInput, RepeatFrequency } from '../core/types';
 import {
   getExpensesForMonth,
   createExpense as dbCreateExpense,
+  createRecurringExpense,
   updateExpense as dbUpdateExpense,
   deleteExpense as dbDeleteExpense,
 } from '../core/database';
@@ -14,7 +15,7 @@ import { useDB } from './useDatabase';
 
 export interface UseExpensesResult {
   expenses: ExpenseWithCategory[];
-  addExpense: (input: ExpenseInput) => void;
+  addExpense: (input: ExpenseInput, repeat?: RepeatFrequency) => void;
   updateExpense: (id: string, input: ExpenseInput) => void;
   deleteExpense: (id: string) => void;
   loading: boolean;
@@ -38,8 +39,12 @@ export function useExpenses(monthKey: string): UseExpensesResult {
   }, [refresh]);
 
   const addExpense = useCallback(
-    (input: ExpenseInput) => {
-      dbCreateExpense(db, input);
+    (input: ExpenseInput, repeat?: RepeatFrequency) => {
+      if (repeat) {
+        createRecurringExpense(db, input, repeat);
+      } else {
+        dbCreateExpense(db, input);
+      }
       refresh();
     },
     [db, refresh],

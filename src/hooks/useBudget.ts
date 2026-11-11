@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { MonthlyBudget } from '../core/types';
 import {
   getBudgetForMonth,
+  clearBudgetForMonth,
   setBudget as dbSetBudget,
 } from '../core/database';
 import { useDB } from './useDatabase';
@@ -13,6 +14,7 @@ import { useDB } from './useDatabase';
 export interface UseBudgetResult {
   budget: MonthlyBudget | null;
   setBudget: (budgetCents: number) => void;
+  clearBudget: () => void;
   loading: boolean;
   refresh: () => void;
 }
@@ -41,5 +43,10 @@ export function useBudget(monthKey: string): UseBudgetResult {
     [db, monthKey, refresh],
   );
 
-  return { budget, setBudget, loading, refresh };
+  const clearBudget = () => {
+    clearBudgetForMonth(db, monthKey);
+    refresh();
+  };
+
+  return { budget: budget?.monthKey === monthKey ? budget : null, setBudget, clearBudget, loading, refresh };
 }

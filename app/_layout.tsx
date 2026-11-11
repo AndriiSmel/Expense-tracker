@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import { DatabaseProvider } from '../src/hooks/useDatabase';
 import { ThemeProvider, useAppTheme } from '../src/hooks/useAppTheme';
+import { PreferencesProvider } from '../src/hooks/usePreferences';
 
 function AppContent() {
   const { isDark, colors } = useAppTheme();
@@ -30,9 +31,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <DatabaseProvider>
-        <ThemeProvider>
-          <AppContent />
-        </ThemeProvider>
+        <PreferencesProvider>
+          <ThemeProvider>
+            <AppContent />
+          </ThemeProvider>
+        </PreferencesProvider>
       </DatabaseProvider>
     </GestureHandlerRootView>
   );

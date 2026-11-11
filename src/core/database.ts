@@ -2,7 +2,7 @@
  * SQLite database operations using expo-sqlite (SDK 52+ synchronous API).
  *
  * Every function takes a `db` parameter so the caller owns the connection.
- * Tables: schema_version, categories, expenses, monthly_budgets.
+ * Tables: schema_version, categories, expenses, monthly_budgets, preferences, recurring_expenses.
  */
 
 import * as SQLite from 'expo-sqlite';
@@ -16,9 +16,12 @@ import {
   ExpenseInput,
   CategoryInput,
   BackupData,
+  RecurringExpense,
+  RepeatFrequency,
 } from '../core/types';
-import { DEFAULT_CATEGORIES, SCHEMA_VERSION } from '../core/constants';
-import { generateId, nowISO } from '../utils/formatters';
+import { CurrencyCode, DEFAULT_BUDGET_CENTS, DEFAULT_CATEGORIES, DEFAULT_CURRENCY, SCHEMA_VERSION } from '../core/constants';
+import { generateId, getToday, nowISO } from '../utils/formatters';
+import { getNextRepeatDate, isCalendarDate, isRepeatFrequency } from './recurrence';
 import { calculateCategoryBreakdown } from '../core/calculations';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -126,6 +129,31 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
       updated_at  TEXT NOT NULL
     );
   `);
+
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS preferences (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      default_budget_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL
+    );
+  `);
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS recurring_expenses (
+      id TEXT PRIMARY KEY NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      category_id TEXT NOT NULL REFERENCES categories(id),
+      start_date TEXT NOT NULL,
+      note TEXT,
+      repeat_interval INTEGER NOT NULL,
+      repeat_unit TEXT NOT NULL,
+      next_date TEXT NOT NULL
+    );
+  `);
+  db.runSync(
+    'INSERT OR IGNORE INTO preferences (id, default_budget_cents, currency) VALUES (1, ?, ?)',
+    DEFAULT_BUDGET_CENTS,
+    DEFAULT_CURRENCY,
+  );
 
   // Create index for faster month queries
   db.execSync(`
@@ -345,6 +373,72 @@ export function deleteExpense(
   db.runSync('DELETE FROM expenses WHERE id = ?', id);
 }
 
+// ─── Recurring expenses ───────────────────────────────────────────────
+
+const recurringExpenseQuery = `
+  SELECT id, amount_cents AS amountCents, category_id AS categoryId,
+    start_date AS date, note, repeat_interval AS interval, repeat_unit AS unit,
+    next_date AS nextDate
+  FROM recurring_expenses
+`;
+
+export function getRecurringExpenses(db: SQLite.SQLiteDatabase): RecurringExpense[] {
+  return db.getAllSync<RecurringExpense>(`${recurringExpenseQuery} ORDER BY next_date, id`);
+}
+
+function insertRecurringExpense(db: SQLite.SQLiteDatabase, rule: RecurringExpense): void {
+  db.runSync(
+    `INSERT INTO recurring_expenses
+       (id, amount_cents, category_id, start_date, note, repeat_interval, repeat_unit, next_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    rule.id, rule.amountCents, rule.categoryId, rule.date, rule.note,
+    rule.interval, rule.unit, rule.nextDate,
+  );
+}
+
+export function createRecurringExpense(
+  db: SQLite.SQLiteDatabase,
+  input: ExpenseInput,
+  frequency: RepeatFrequency,
+): void {
+  const today = getToday();
+  if (!isCalendarDate(input.date) || input.date < today || !isRepeatFrequency(frequency)
+    || !Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
+    throw new Error('Enter a positive amount, a valid frequency, and a start date of today or later.');
+  }
+  db.withTransactionSync(() => {
+    insertRecurringExpense(db, { ...input, ...frequency, id: generateId(), nextDate: input.date });
+    recordDueExpenses(db, today);
+  });
+}
+
+function recordDueExpenses(db: SQLite.SQLiteDatabase, throughDate: string): number {
+  const due = db.getAllSync<RecurringExpense>(`${recurringExpenseQuery} WHERE next_date <= ?`, throughDate);
+  let recorded = 0;
+  for (const rule of due) {
+    let date = rule.nextDate;
+    while (date <= throughDate) {
+      createExpense(db, { ...rule, date });
+      recorded++;
+      date = getNextRepeatDate(rule.date, date, rule);
+    }
+    db.runSync('UPDATE recurring_expenses SET next_date = ? WHERE id = ?', date, rule.id);
+  }
+  return recorded;
+}
+
+export function recordDueRecurringExpenses(db: SQLite.SQLiteDatabase, throughDate = getToday()): number {
+  let recorded = 0;
+  db.withTransactionSync(() => {
+    recorded = recordDueExpenses(db, throughDate);
+  });
+  return recorded;
+}
+
+export function stopRecurringExpense(db: SQLite.SQLiteDatabase, id: string): void {
+  db.runSync('DELETE FROM recurring_expenses WHERE id = ?', id);
+}
+
 export function getAllExpenses(db: SQLite.SQLiteDatabase): Expense[] {
   const rows = db.getAllSync(
     'SELECT * FROM expenses ORDER BY date DESC, created_at DESC',
@@ -353,6 +447,24 @@ export function getAllExpenses(db: SQLite.SQLiteDatabase): Expense[] {
 }
 
 // ─── Budget CRUD ─────────────────────────────────────────────────────
+
+export function getPreferences(db: SQLite.SQLiteDatabase) {
+  const row = db.getFirstSync<{ default_budget_cents: number; currency: CurrencyCode }>(
+    'SELECT default_budget_cents, currency FROM preferences WHERE id = 1',
+  );
+  return {
+    defaultBudgetCents: row?.default_budget_cents ?? DEFAULT_BUDGET_CENTS,
+    currency: row?.currency ?? DEFAULT_CURRENCY,
+  };
+}
+
+export function setDefaultBudget(db: SQLite.SQLiteDatabase, cents: number): void {
+  db.runSync('UPDATE preferences SET default_budget_cents = ? WHERE id = 1', cents);
+}
+
+export function setCurrency(db: SQLite.SQLiteDatabase, currency: CurrencyCode): void {
+  db.runSync('UPDATE preferences SET currency = ? WHERE id = 1', currency);
+}
 
 export function getBudgetForMonth(
   db: SQLite.SQLiteDatabase,
@@ -389,6 +501,10 @@ export function getAllBudgets(db: SQLite.SQLiteDatabase): MonthlyBudget[] {
   return rows.map(rowToBudget);
 }
 
+export function clearBudgetForMonth(db: SQLite.SQLiteDatabase, monthKey: string): void {
+  db.runSync('DELETE FROM monthly_budgets WHERE month_key = ?', monthKey);
+}
+
 // ─── Month Summary ───────────────────────────────────────────────────
 
 export function getMonthSummary(
@@ -400,7 +516,7 @@ export function getMonthSummary(
   const budget = getBudgetForMonth(db, monthKey);
 
   const totalSpentCents = expenses.reduce((sum, e) => sum + e.amountCents, 0);
-  const budgetCents = budget?.budgetCents ?? 0;
+  const budgetCents = budget?.budgetCents ?? getPreferences(db).defaultBudgetCents;
   const remainingCents = budgetCents - totalSpentCents;
   const usagePercentage = budgetCents > 0 ? (totalSpentCents / budgetCents) * 100 : 0;
 
@@ -424,6 +540,7 @@ export function importBackupData(
 ): void {
   db.execSync('BEGIN TRANSACTION;');
   try {
+    db.execSync('DELETE FROM recurring_expenses;');
     db.execSync('DELETE FROM expenses;');
     db.execSync('DELETE FROM categories;');
     db.execSync('DELETE FROM monthly_budgets;');
@@ -470,6 +587,11 @@ export function importBackupData(
         b.updatedAt,
       );
     }
+
+    for (const rule of data.recurringExpenses ?? []) {
+      insertRecurringExpense(db, rule);
+    }
+    recordDueExpenses(db, getToday());
 
     db.execSync('COMMIT;');
   } catch (error) {

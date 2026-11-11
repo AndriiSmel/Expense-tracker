@@ -18,6 +18,7 @@ export default function CategoryLegend({
   selectedCategoryId,
   onSelectCategory,
 }: CategoryLegendProps) {
+  const { currency } = usePreferences();
   return (
     <View style={styles.container}>
       {data
@@ -63,7 +64,7 @@ export default function CategoryLegend({
               </View>
               <View style={styles.rightSection}>
                 <Text style={[styles.amount, { color: colors.text }]}>
-                  {formatCurrency(item.totalCents)}
+                  {formatCurrency(item.totalCents, currency)}
                 </Text>
                 <Text style={[styles.percentage, { color: colors.textSecondary }]}>
                   {formatPercentage(item.percentage)}
@@ -118,3 +119,4 @@ const styles = StyleSheet.create({
     ...typography.caption,
   },
 });
+import { usePreferences } from '../hooks/usePreferences';

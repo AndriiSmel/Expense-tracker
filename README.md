@@ -13,7 +13,9 @@ A private, minimalist personal expense tracker mobile application built with **R
 - **Sub-Second Expense Logging**: Floating action button (`+`) launches an optimized bottom sheet with immediate numeric keypad focus and category selection.
 - **Precise Integer Cents Math**: Monetary values are stored as 64-bit integer cents (e.g., `€15.99` → `1599`) eliminating floating-point calculation errors.
 - **Interactive Expense Breakdown**: Native SVG donut chart with category distribution, center monthly total, legend breakdown, and one-tap category filtering.
-- **Flexible Monthly Budgets**: Set distinct budgets for each month with animated progress tracking and 80%/100% threshold indicators.
+- **Flexible Monthly Budgets**: Set a recurring default and override individual months, with animated progress tracking and 80%/100% threshold indicators.
+- **Currency Preference**: Choose the currency shown in the app. Saved amounts keep their numeric values.
+- **Recurring Expenses**: Set an amount, category, start date, and repeat interval in days, weeks, months, or years. Due entries are recorded when you open or return to the app.
 - **Full Category Customization**: Create custom categories, choose colors and icons, rename, or archive unused categories without deleting historical records.
 - **Manual Backup & Restore**: Export full JSON backups, export CSV spreadsheets for Excel/Numbers, and restore data with integrity validation.
 - **Light & Dark Mode**: Seamlessly adapts to your system theme or manual toggle (Light, Dark, System Default).
@@ -120,15 +122,14 @@ CREATE TABLE monthly_budgets (
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version 18 or newer)
+- [Node.js](https://nodejs.org/) (version 22.13 or newer)
 - npm or yarn
-- Expo Go on your physical iOS/Android device, or an iOS Simulator / Android Emulator
+- Expo Go built for SDK 58 on your device or emulator, or an SDK 58 development build
 
 ### 1. Install dependencies
 
 ```bash
-cd "Expense tracker"
-npm install
+npm ci
 ```
 
 ### 2. Start the development server
@@ -139,8 +140,8 @@ npx expo start
 
 ### 3. Open on your device
 
-- **iOS**: Open the Camera app on your iPhone and scan the QR code displayed in your terminal (using Expo Go), or press `i` to launch in the iOS Simulator.
-- **Android**: Open the Expo Go app on your Android device and scan the QR code, or press `a` to run on an attached Android emulator.
+- **Android**: Install the [SDK 58 build of Expo Go](https://expo.dev/go?sdkVersion=58&platform=android&device=true). Connect the phone and computer to the same Wi-Fi network and scan the terminal QR code from Expo Go. For an Android emulator, start the emulator and press `a` in the terminal.
+- **iOS**: Use an SDK 58 build of Expo Go. If the App Store build on your device reports a different SDK, use the [Expo Go installer](https://sign.expo.dev/) or an SDK 58 development build. On macOS, you can also press `i` to open the iOS Simulator.
 
 ---
 
@@ -199,15 +200,17 @@ eas build -p ios --profile preview
 5. (Optional) Adjust the date or add a short note.
 6. Tap **Save Expense**. The bottom sheet closes, subtle haptic confirmation plays, and the monthly budget card, donut chart, and transaction list update immediately.
 
+For a recurring expense, turn on **Repeat expense**, enter the interval, choose the unit, and tap **Save Recurring Expense**. The date on the form is the first occurrence. To stop future entries, go to **Settings → Recurring Expenses**.
+
 ### 2. Editing or Deleting an Expense
 1. Tap any transaction in the **Recent Expenses** list.
 2. The sheet reopens with all existing values pre-filled.
 3. Edit the amount, category, date, or note and tap **Save Changes**, or tap **Delete Expense** (with confirmation) to remove it.
 
-### 3. Adjusting Monthly Budget
-1. On the dashboard budget card, tap the pencil edit icon next to "Monthly Budget".
-2. Enter your desired budget for the active month (e.g. `2500`).
-3. Tap **Save**. The progress bar and remaining amount update in real-time.
+### 3. Setting Your Budget and Currency
+1. In **Settings → Budget & Currency**, tap **Default monthly budget** and save the amount you want to use each month.
+2. To make an exception, tap the pencil on the dashboard budget card and save a budget for the selected month. Tap **Use default budget** in the same dialog to clear the exception.
+3. Tap **Currency** in Settings to choose the currency shown in expense inputs, budgets, and totals.
 
 ### 4. Categorized Filtering
 1. Tap any colored segment on the **Donut Chart** or tap a category row in the **Category Legend**.

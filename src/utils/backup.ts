@@ -5,7 +5,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import {
@@ -19,8 +19,10 @@ import {
   getAllExpenses,
   getAllCategories,
   getAllBudgets,
+  getRecurringExpenses,
   importBackupData,
 } from '../core/database';
+import { isCalendarDate, isRepeatFrequency } from '../core/recurrence';
 import { nowISO, formatDate } from '../utils/formatters';
 
 // ─── Export ──────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ export function exportAsJSON(db: SQLite.SQLiteDatabase): string {
     expenses: getAllExpenses(db),
     categories: getAllCategories(db),
     budgets: getAllBudgets(db),
+    recurringExpenses: getRecurringExpenses(db),
   };
   return JSON.stringify(backup, null, 2);
 }
@@ -147,6 +150,22 @@ export function validateBackup(data: unknown): ValidationResult {
 
   if (!Array.isArray(obj.budgets)) {
     return { valid: false, error: 'Missing or invalid "budgets" array.' };
+  }
+
+  if (obj.version >= 2 || obj.recurringExpenses !== undefined) {
+    if (!Array.isArray(obj.recurringExpenses) || obj.recurringExpenses.some((entry: unknown) => {
+      if (!isRepeatFrequency(entry)) return true;
+      const rule = entry as unknown as Record<string, unknown>;
+      return typeof rule.id !== 'string' || !rule.id
+        || typeof rule.categoryId !== 'string'
+        || typeof rule.amountCents !== 'number' || !Number.isSafeInteger(rule.amountCents)
+        || rule.amountCents <= 0
+        || !isCalendarDate(rule.date) || !isCalendarDate(rule.nextDate)
+        || rule.nextDate < rule.date
+        || (rule.note !== null && typeof rule.note !== 'string');
+    })) {
+      return { valid: false, error: 'Recurring expenses have invalid structure.' };
+    }
   }
 
   // Spot-check a few required fields in first entries

@@ -48,6 +48,7 @@ export default function DonutChart({
   onSelectCategory,
   size = 220,
 }: DonutChartProps) {
+  const { currency } = usePreferences();
   const cx = size / 2;
   const cy = size / 2;
   const strokeWidth = 28;
@@ -161,7 +162,7 @@ export default function DonutChart({
           fontWeight="700"
           fill={colors.text}
         >
-          {formatCurrency(totalCents)}
+          {formatCurrency(totalCents, currency)}
         </SvgText>
       </Svg>
 
@@ -226,3 +227,4 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
 });
+import { usePreferences } from '../hooks/usePreferences';

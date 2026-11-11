@@ -18,6 +18,7 @@ export default function BudgetCard({
   spentCents,
   onEditPress,
 }: BudgetCardProps) {
+  const { currency } = usePreferences();
   const animatedWidth = useRef(new Animated.Value(0)).current;
 
   const percentage = budgetCents > 0 ? (spentCents / budgetCents) * 100 : 0;
@@ -74,7 +75,7 @@ export default function BudgetCard({
       </View>
 
       <Text style={[styles.amount, { color: colors.text }]}>
-        {formatCurrency(budgetCents)}
+        {formatCurrency(budgetCents, currency)}
       </Text>
 
       {/* Progress bar */}
@@ -95,7 +96,7 @@ export default function BudgetCard({
 
       <View style={styles.summaryRow}>
         <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
-          Spent: {formatCurrency(spentCents)} ({Math.round(percentage)}%)
+          Spent: {formatCurrency(spentCents, currency)} ({Math.round(percentage)}%)
         </Text>
         <Text
           style={[
@@ -107,8 +108,8 @@ export default function BudgetCard({
           ]}
         >
           {isExceeded
-            ? `Over by: ${formatCurrency(Math.abs(remainingCents))}`
-            : `Remaining: ${formatCurrency(remainingCents)}`}
+            ? `Over by: ${formatCurrency(Math.abs(remainingCents), currency)}`
+            : `Remaining: ${formatCurrency(remainingCents, currency)}`}
         </Text>
       </View>
     </View>
@@ -180,3 +181,4 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
   },
 });
+import { usePreferences } from '../hooks/usePreferences';

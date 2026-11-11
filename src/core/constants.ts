@@ -26,11 +26,28 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
 
 // ─── Budget Defaults ─────────────────────────────────────────────────
 
-export const DEFAULT_BUDGET_CENTS = 200000; // €2,000.00
+export const DEFAULT_BUDGET_CENTS = 200000;
+
+export const CURRENCY_SYMBOLS = {
+  EUR: '€',
+  USD: '$',
+  GBP: '£',
+  CHF: 'CHF ',
+  CAD: 'CA$',
+  AUD: 'A$',
+  INR: '₹',
+  PLN: 'PLN ',
+  SEK: 'SEK ',
+  NOK: 'NOK ',
+  DKK: 'DKK ',
+} as const;
+
+export type CurrencyCode = keyof typeof CURRENCY_SYMBOLS;
+export const DEFAULT_CURRENCY: CurrencyCode = 'EUR';
 
 // ─── Backup Version ──────────────────────────────────────────────────
 
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 // ─── Database ────────────────────────────────────────────────────────
 

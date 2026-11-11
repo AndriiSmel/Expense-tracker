@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, TouchableWithoutFeedback, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeColors } from '../core/types';
 import { shadows } from '../theme/theme';
 
@@ -11,7 +10,6 @@ interface FABProps {
 }
 
 export default function FAB({ colors, onPress }: FABProps) {
-  const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -42,7 +40,6 @@ export default function FAB({ colors, onPress }: FABProps) {
           shadows.fab,
           {
             backgroundColor: colors.primary,
-            bottom: 24 + insets.bottom,
             transform: [{ scale }],
           },
         ]}
@@ -56,6 +53,7 @@ export default function FAB({ colors, onPress }: FABProps) {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
+    bottom: 24,
     right: 20,
     width: 60,
     height: 60,
