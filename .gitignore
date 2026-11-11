@@ -1,0 +1,102 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Expo & Metro
+.expo/
+.expo-shared/
+dist/
+build/
+web-build/
+metro-cache/
+.cache/
+.metro-health-check*
+
+# Native project directories (managed Expo workflow)
+ios/
+android/
+
+# Native build artifacts
+*.ipa
+*.apk
+*.aab
+
+# Keystores, certificates & provisioning profiles
+*.jks
+*.p8
+*.p12
+*.key
+*.keystore
+*.pem
+*.cer
+*.der
+*.mobileprovision
+*.provisionprofile
+key.properties
+credentials.json
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+.env*.local
+*.env
+
+# Local database files & personal expense data / backups
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.csv
+*backup*.json
+*backup*.csv
+expense-backup-*.json
+expenses-*.csv
+
+# Cloud service & store configs with sensitive IDs
+google-services.json
+GoogleService-Info.plist
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+
+# IDE & Editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*.suo
+*.sublime-workspace
+*.sublime-project
+
+# Temporary files, logs & test coverage
+tmp/
+temp/
+*.tmp
+*.temp
+*.log
+coverage/
+.nyc_output/
