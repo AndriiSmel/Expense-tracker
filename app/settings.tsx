@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,15 +19,18 @@ import { usePreferences } from '../src/hooks/usePreferences';
 
 import { CURRENCY_SYMBOLS, CurrencyCode } from '../src/core/constants';
 import { Category, CategoryInput, RecurringExpense, ThemeMode } from '../src/core/types';
-import { getRecurringExpenses, recordDueRecurringExpenses, stopRecurringExpense } from '../src/core/database';
+import { getRecurringExpenses, importBackupData, isCategoryInUse, recordDueRecurringExpenses, stopRecurringExpense } from '../src/core/database';
 import { formatRepeatFrequency } from '../src/core/recurrence';
-import { typography, spacing, radius, shadows } from '../src/theme/theme';
+import { nunito, typography, spacing, radius, shadows } from '../src/theme/theme';
 import {
   shareBackupJSON,
   shareBackupCSV,
-  pickAndImportBackup,
+  getLastBackupDate,
+  pickBackup,
 } from '../src/utils/backup';
 
+import DriveSyncSettings from '../src/components/DriveSyncSettings';
+import { useDriveSync } from '../src/hooks/useDriveSync';
 import CategoryEditModal from '../src/components/CategoryEditModal';
 import ConfirmModal from '../src/components/ConfirmModal';
 import BudgetEditModal from '../src/components/BudgetEditModal';
@@ -38,6 +41,8 @@ const currencyOptions = Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[];
 export default function SettingsScreen() {
   const router = useRouter();
   const db = useDB();
+  const drive = useDriveSync();
+  const { revision: driveRevision } = drive;
   const { colors, mode, setMode } = useAppTheme();
   const { currency, defaultBudgetCents, saveCurrency, saveDefaultBudget } = usePreferences();
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
@@ -61,15 +66,31 @@ export default function SettingsScreen() {
     updateCategory,
     archiveCategory,
     unarchiveCategory,
+    deleteCategory,
     refresh: refreshCategories,
   } = useCategories();
+
+  useEffect(() => {
+    refreshCategories();
+    setRecurringExpenses(getRecurringExpenses(db));
+  }, [db, driveRevision, refreshCategories]);
 
   // Category Edit state
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   // Backup restore state
-  const [importConfirmVisible, setImportConfirmVisible] = useState(false);
+  const [backupPreview, setBackupPreview] = useState<Awaited<ReturnType<typeof pickBackup>>>(null);
+  const [isPickingBackup, setIsPickingBackup] = useState(false);
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getLastBackupDate().then((date) => {
+      if (active) setLastBackupDate(date);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [isExporting, setIsExporting] = useState(false);
 
   // Handle open category modal
@@ -91,6 +112,49 @@ export default function SettingsScreen() {
     }
   };
 
+  const confirmDeleteCategory = (category: Category) => {
+    const showCategoryInUse = () => Alert.alert(
+      'Category in use',
+      category.isArchived
+        ? 'This category is linked to an expense or recurring schedule.'
+        : 'This category is linked to an expense or recurring schedule. You can archive it to hide it from new entries.',
+    );
+
+    try {
+      if (isCategoryInUse(db, category.id)) {
+        showCategoryInUse();
+        return;
+      }
+      Alert.alert('Delete category?', `Delete “${category.name}”?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              if (!deleteCategory(category.id) && isCategoryInUse(db, category.id)) showCategoryInUse();
+            } catch {
+              Alert.alert('Could not delete category', 'Please try again.');
+            }
+          },
+        },
+      ]);
+    } catch {
+      Alert.alert('Could not check category', 'Please try again.');
+    }
+  };
+
+  const renderDeleteCategoryButton = (category: Category) => (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={`Delete ${category.name} category`}
+      onPress={() => confirmDeleteCategory(category)}
+      style={styles.iconButton}
+    >
+      <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.danger} />
+    </TouchableOpacity>
+  );
+
   const confirmStopRecurring = (rule: RecurringExpense) => {
     Alert.alert('Stop recurring expense?', 'Expenses already recorded will stay in your history.', [
       { text: 'Cancel', style: 'cancel' },
@@ -109,7 +173,7 @@ export default function SettingsScreen() {
   const handleExportJSON = async () => {
     try {
       setIsExporting(true);
-      await shareBackupJSON(db);
+      await shareBackupJSON(db, setLastBackupDate);
     } catch (e: any) {
       Alert.alert('Export Failed', e.message || 'Could not export JSON backup.');
     } finally {
@@ -128,39 +192,40 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleImportBackup = async () => {
-    setImportConfirmVisible(false);
+  const handlePickBackup = async () => {
+    setIsPickingBackup(true);
     try {
-      const result = await pickAndImportBackup(db);
-      if (result === null) {
-        // User cancelled picker
-        return;
-      }
-      if (result.valid) {
-        refreshCategories();
-        setRecurringExpenses(getRecurringExpenses(db));
-        Alert.alert(
-          'Backup Restored',
-          'Your expenses, recurring schedules, categories, and budgets have been restored.',
-        );
-      } else {
-        Alert.alert('Import Failed', result.error || 'The backup file is invalid.');
-      }
-    } catch (e: any) {
-      Alert.alert('Import Error', e.message || 'Failed to read backup file.');
+      setBackupPreview(await pickBackup());
+    } catch (error) {
+      Alert.alert('Could not open backup', error instanceof Error ? error.message : 'Please try another file.');
+    } finally {
+      setIsPickingBackup(false);
+    }
+  };
+
+  const handleRestoreBackup = () => {
+    if (!backupPreview) return;
+    try {
+      importBackupData(db, backupPreview.data);
+      setBackupPreview(null);
+      refreshCategories();
+      setRecurringExpenses(getRecurringExpenses(db));
+      Alert.alert('Backup restored', 'Expenses, categories, budgets, and recurring schedules were replaced.');
+    } catch (error) {
+      Alert.alert('Could not restore backup', error instanceof Error ? error.message : 'Please try again.');
     }
   };
 
   const activeCats = categories.filter((c) => !c.isArchived);
-  const archivedCats = categories.filter((c) => c.isArchived);
+  const archivedCats = categories.filter((c) => c.isArchived && !c.isDeleted);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Navigation Bar */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.navigate('/')}
             style={styles.backButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
@@ -342,6 +407,9 @@ export default function SettingsScreen() {
             </View>
 
             <View style={[styles.card, { backgroundColor: colors.surface }, shadows.card]}>
+              {activeCats.length === 0 && (
+                <Text style={[styles.categoryRow, { color: colors.textSecondary }]}>No active categories</Text>
+              )}
               {activeCats.map((cat, index) => (
                 <React.Fragment key={cat.id}>
                   <View style={styles.categoryRow}>
@@ -386,6 +454,7 @@ export default function SettingsScreen() {
                           color={colors.textTertiary}
                         />
                       </TouchableOpacity>
+                      {renderDeleteCategoryButton(cat)}
                     </View>
                   </View>
                   {index < activeCats.length - 1 && (
@@ -428,19 +497,22 @@ export default function SettingsScreen() {
                           </Text>
                         </View>
 
-                        <TouchableOpacity
-                          onPress={() => unarchiveCategory(cat.id)}
-                          style={[styles.unarchiveButton, { backgroundColor: colors.surfaceSecondary }]}
-                        >
-                          <MaterialCommunityIcons
-                            name="archive-arrow-up-outline"
-                            size={16}
-                            color={colors.primary}
-                          />
-                          <Text style={[styles.unarchiveText, { color: colors.primary }]}>
-                            Restore
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={styles.categoryActions}>
+                          <TouchableOpacity
+                            onPress={() => unarchiveCategory(cat.id)}
+                            style={[styles.unarchiveButton, { backgroundColor: colors.surfaceSecondary }]}
+                          >
+                            <MaterialCommunityIcons
+                              name="archive-arrow-up-outline"
+                              size={16}
+                              color={colors.primary}
+                            />
+                            <Text style={[styles.unarchiveText, { color: colors.primary }]}>
+                              Restore
+                            </Text>
+                          </TouchableOpacity>
+                          {renderDeleteCategoryButton(cat)}
+                        </View>
                       </View>
                       {index < archivedCats.length - 1 && (
                         <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -452,6 +524,8 @@ export default function SettingsScreen() {
             )}
           </View>
 
+          <DriveSyncSettings colors={colors} />
+
           {/* 3. Backup and Restore */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
@@ -460,13 +534,13 @@ export default function SettingsScreen() {
             <View style={[styles.card, { backgroundColor: colors.surface }, shadows.card]}>
               <TouchableOpacity
                 onPress={handleExportJSON}
-                disabled={isExporting}
+                disabled={isExporting || isPickingBackup}
                 style={styles.actionRow}
                 activeOpacity={0.7}
               >
                 <View style={styles.optionLeft}>
                   <MaterialCommunityIcons
-                    name="cloud-upload-outline"
+                    name="file-upload-outline"
                     size={22}
                     color={colors.primary}
                   />
@@ -475,7 +549,9 @@ export default function SettingsScreen() {
                       Export JSON Backup
                     </Text>
                     <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                      Full backup of expenses, budgets & categories
+                      {lastBackupDate
+                        ? `Last prepared: ${new Date(lastBackupDate).toLocaleDateString()}`
+                        : 'No JSON export recorded'}
                     </Text>
                   </View>
                 </View>
@@ -486,7 +562,7 @@ export default function SettingsScreen() {
 
               <TouchableOpacity
                 onPress={handleExportCSV}
-                disabled={isExporting}
+                disabled={isExporting || isPickingBackup}
                 style={styles.actionRow}
                 activeOpacity={0.7}
               >
@@ -511,13 +587,14 @@ export default function SettingsScreen() {
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
               <TouchableOpacity
-                onPress={() => setImportConfirmVisible(true)}
+                onPress={handlePickBackup}
+                disabled={isExporting || isPickingBackup}
                 style={styles.actionRow}
                 activeOpacity={0.7}
               >
                 <View style={styles.optionLeft}>
                   <MaterialCommunityIcons
-                    name="cloud-download-outline"
+                    name="file-download-outline"
                     size={22}
                     color={colors.warning}
                   />
@@ -548,9 +625,7 @@ export default function SettingsScreen() {
                 style={styles.noticeIcon}
               />
               <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
-                Your data is stored 100% locally on your phone. No servers, no accounts, and no
-                cloud sync. Remember to regularly export a JSON backup to protect against phone loss
-                or app re-installation.
+                Export a JSON backup to keep a recoverable copy of your data. Backup files contain readable expense data.
               </Text>
             </View>
           </View>
@@ -587,13 +662,18 @@ export default function SettingsScreen() {
         {/* Restore Confirmation Modal */}
         <ConfirmModal
           colors={colors}
-          visible={importConfirmVisible}
-          title="Restore Backup?"
-          message="Restoring from a backup will replace your expenses, recurring schedules, categories, and budgets with the data from the backup file. This cannot be undone."
-          confirmLabel="Choose Backup File"
+          visible={backupPreview !== null}
+          title="Replace data from backup?"
+          message={backupPreview ? [
+            backupPreview.name,
+            `${backupPreview.data.expenses.length} expenses · ${backupPreview.data.categories.filter((category) => !category.isDeleted).length} categories`,
+            `${backupPreview.data.budgets.length} budgets · ${backupPreview.data.recurringExpenses?.length ?? 0} recurring schedules`,
+            'Restoring permanently replaces your current expenses, categories, budgets, and recurring schedules.',
+          ].join('\n\n') : ''}
+          confirmLabel="Replace Data"
           confirmDestructive={true}
-          onConfirm={handleImportBackup}
-          onCancel={() => setImportConfirmVisible(false)}
+          onConfirm={handleRestoreBackup}
+          onCancel={() => setBackupPreview(null)}
         />
       </View>
     </SafeAreaView>
@@ -646,7 +726,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.caption,
-    fontWeight: '700',
+    ...nunito.bold,
     letterSpacing: 0.8,
     marginBottom: spacing.xs,
     paddingHorizontal: spacing.xs,
@@ -669,7 +749,7 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     ...typography.body,
-    fontWeight: '500',
+    ...nunito.regular,
   },
   preferenceLabel: {
     flex: 1,
@@ -711,7 +791,7 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     ...typography.caption,
-    fontWeight: '700',
+    ...nunito.bold,
   },
   categoryRow: {
     flexDirection: 'row',
@@ -735,7 +815,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     ...typography.body,
-    fontWeight: '500',
+    ...nunito.regular,
   },
   categoryActions: {
     flexDirection: 'row',
@@ -753,7 +833,7 @@ const styles = StyleSheet.create({
   },
   archivedTitle: {
     ...typography.caption,
-    fontWeight: '600',
+    ...nunito.semibold,
     marginBottom: spacing.xs,
     paddingHorizontal: spacing.xs,
   },
@@ -767,7 +847,7 @@ const styles = StyleSheet.create({
   },
   unarchiveText: {
     ...typography.caption,
-    fontWeight: '600',
+    ...nunito.semibold,
   },
   actionRow: {
     flexDirection: 'row',
@@ -777,7 +857,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     ...typography.body,
-    fontWeight: '600',
+    ...nunito.semibold,
   },
   actionDesc: {
     ...typography.bodySmall,

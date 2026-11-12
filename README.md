@@ -16,7 +16,7 @@ A private, minimalist personal expense tracker mobile application built with **R
 - **Flexible Monthly Budgets**: Set a recurring default and override individual months, with animated progress tracking and 80%/100% threshold indicators.
 - **Currency Preference**: Choose the currency shown in the app. Saved amounts keep their numeric values.
 - **Recurring Expenses**: Set an amount, category, start date, and repeat interval in days, weeks, months, or years. Due entries are recorded when you open or return to the app.
-- **Full Category Customization**: Create custom categories, choose colors and icons, rename, or archive unused categories without deleting historical records.
+- **Category Management**: Create, rename, customize, or archive categories. Delete unused categories from Settings.
 - **Manual Backup & Restore**: Export full JSON backups, export CSV spreadsheets for Excel/Numbers, and restore data with integrity validation.
 - **Light & Dark Mode**: Seamlessly adapts to your system theme or manual toggle (Light, Dark, System Default).
 
@@ -89,6 +89,7 @@ CREATE TABLE categories (
   icon        TEXT NOT NULL,
   sort_order  INTEGER NOT NULL DEFAULT 0,
   is_archived INTEGER NOT NULL DEFAULT 0,
+  is_deleted  INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -151,19 +152,20 @@ To install this as a standalone native app on your phone without relying on Expo
 
 ### Option A: Local Build (via Expo Prebuild)
 
-Generate native iOS and Android projects locally:
+On Windows, generate the Android project and build a standalone APK in PowerShell:
+
+```powershell
+npx.cmd expo prebuild --platform android --no-install
+cd android
+.\gradlew.bat :app:assembleRelease
+```
+
+The APK is at `android/app/build/outputs/apk/release/app-release.apk`. On Windows, prebuild moves the app's CMake staging directory to the repository root and sets a 250-character object path limit. Rerun prebuild on Windows if an older generated project fails with Ninja's `Filename longer than 260 characters` error.
+
+On macOS, generate the iOS project and build with Xcode installed:
 
 ```bash
-# Generate the native ios/ and android/ directories
-npx expo prebuild
-
-# For Android (outputs a debug or release APK):
-cd android
-./gradlew assembleRelease
-# APK will be in android/app/build/outputs/apk/release/app-release.apk
-
-# For iOS (requires Xcode on macOS):
-cd ..
+npx expo prebuild --platform ios
 npx expo run:ios --configuration Release
 ```
 
@@ -222,6 +224,7 @@ For a recurring expense, turn on **Repeat expense**, enter the interval, choose 
 2. Tap **New** to create a custom category: enter a name, pick a color swatch, and choose a Material icon.
 3. Tap the pencil icon on any existing category to rename it or modify its styling.
 4. Tap the archive icon to hide a category from the active entry grid without affecting historical expense logs.
+5. Tap the trash icon on an active or archived category and confirm. Categories linked to any expense or recurring schedule can be archived.
 
 ### 6. Backup & Restore
 1. In **Settings**, scroll to **Data & Backups**.
@@ -247,3 +250,19 @@ A future Electron, Tauri, or Web desktop application can directly import these c
 ## License
 
 Personal and private use only. All financial data remains exclusively on your physical hardware.
+
+## Optional Google Drive sync
+
+Expense entry stays local and works offline. Drive sync is opt-in. With automatic two-way sync enabled, changes to expenses, categories, monthly budgets, and recurring schedules trigger a send and receive after they are saved locally. Restoring a backup also triggers sync. Use **Sync now** to pull changes from another device at any time or retry after an offline edit.
+
+### Enable it in a native build
+
+1. Run `npm ci` from the repo root to install the app's dependencies, including the Google Drive binding.
+2. In one [Google Cloud project](https://console.cloud.google.com/), enable the **Google Drive API** and configure Google Auth Platform. Allow the `https://www.googleapis.com/auth/drive.appdata` scope and add your Google account as a test user if the app is in testing.
+3. For **Android**, create an Android OAuth client for `com.personal.expensetracker` and the SHA-1 fingerprint of the signing certificate used by your native build. Repeat for any different signing certificate you use.
+4. For **iOS**, create an iOS OAuth client for `com.personal.expensetracker`. Put its public client ID in `.env.local` as `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-client-id.apps.googleusercontent.com`. The Expo config registers the matching URL scheme. Use the same Cloud project for both platforms.
+5. Build and install a [standalone APK](#building-a-standalone-app-for-personal-installation), or run `npx expo run:android` for an Android development build. On a Mac, use `npx expo run:ios` for iOS. Then open **Settings → Google Drive Sync → Connect Google Drive**.
+
+Connect the same account on each device. Generate a sync key once, save it somewhere private, and enter it on the other device. The app encrypts changes on the device before uploading to Drive's app-data folder. Drive keeps the encrypted change files so a new device can catch up. Keep a separate backup for recovery. Losing the sync key makes the Drive files unreadable.
+
+Sync covers expenses, categories, monthly budgets, and recurring schedules. App preferences stay device-local. Changes to different records are combined. If both devices change the same record offline, one version is picked deterministically. Restoring a JSON backup changes your local records, and subsequent sync can propagate those changes.

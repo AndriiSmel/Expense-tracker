@@ -24,6 +24,8 @@ export interface Category {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  isDeleted?: true;
+  monthlyLimitCents?: number | null;
 }
 
 export interface MonthlyBudget {

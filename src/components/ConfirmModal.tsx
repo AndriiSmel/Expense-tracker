@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ThemeColors } from '../core/types';
-import { typography, spacing, radius } from '../theme/theme';
+import { lightColors, typography, spacing, radius } from '../theme/theme';
 
 interface ConfirmModalProps {
   colors: ThemeColors;
@@ -43,7 +43,7 @@ export default function ConfirmModal({
               style={[
                 styles.button,
                 {
-                  backgroundColor: confirmDestructive ? colors.danger : colors.primary,
+                  backgroundColor: confirmDestructive ? '#B42318' : lightColors.primary,
                 },
               ]}
             >

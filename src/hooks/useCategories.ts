@@ -11,6 +11,7 @@ import {
   updateCategory as dbUpdateCategory,
   archiveCategory as dbArchiveCategory,
   unarchiveCategory as dbUnarchiveCategory,
+  deleteCategory as dbDeleteCategory,
 } from '../core/database';
 import { useDB } from './useDatabase';
 
@@ -21,6 +22,7 @@ export interface UseCategoriesResult {
   updateCategory: (id: string, input: Partial<CategoryInput>) => void;
   archiveCategory: (id: string) => void;
   unarchiveCategory: (id: string) => void;
+  deleteCategory: (id: string) => boolean;
   loading: boolean;
   refresh: () => void;
 }
@@ -75,6 +77,12 @@ export function useCategories(): UseCategoriesResult {
     [db, refresh],
   );
 
+  const deleteCategory = useCallback((id: string) => {
+    const deleted = dbDeleteCategory(db, id);
+    refresh();
+    return deleted;
+  }, [db, refresh]);
+
   return {
     categories,
     activeCategories,
@@ -82,6 +90,7 @@ export function useCategories(): UseCategoriesResult {
     updateCategory,
     archiveCategory,
     unarchiveCategory,
+    deleteCategory,
     loading,
     refresh,
   };

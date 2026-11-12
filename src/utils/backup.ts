@@ -8,11 +8,9 @@ import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BackupData,
-  Expense,
-  Category,
-  MonthlyBudget,
 } from '../core/types';
 import { BACKUP_VERSION } from '../core/constants';
 import {
@@ -20,10 +18,9 @@ import {
   getAllCategories,
   getAllBudgets,
   getRecurringExpenses,
-  importBackupData,
 } from '../core/database';
 import { isCalendarDate, isRepeatFrequency } from '../core/recurrence';
-import { nowISO, formatDate } from '../utils/formatters';
+import { nowISO } from '../utils/formatters';
 
 // ─── Export ──────────────────────────────────────────────────────────
 
@@ -79,7 +76,16 @@ export function exportAsCSV(db: SQLite.SQLiteDatabase): string {
 /**
  * Export JSON to a temp file and open the system share sheet.
  */
-export async function shareBackupJSON(db: SQLite.SQLiteDatabase): Promise<void> {
+const LAST_BACKUP_KEY = 'expense-tracker:last-json-backup';
+
+export function getLastBackupDate(): Promise<string | null> {
+  return AsyncStorage.getItem(LAST_BACKUP_KEY);
+}
+
+export async function shareBackupJSON(
+  db: SQLite.SQLiteDatabase,
+  onPrepared: (date: string) => void,
+): Promise<void> {
   const json = exportAsJSON(db);
   const fileName = `expense-backup-${new Date().toISOString().slice(0, 10)}.json`;
   const filePath = `${FileSystem.cacheDirectory}${fileName}`;
@@ -87,6 +93,10 @@ export async function shareBackupJSON(db: SQLite.SQLiteDatabase): Promise<void> 
   await FileSystem.writeAsStringAsync(filePath, json, {
     encoding: FileSystem.EncodingType.UTF8,
   });
+
+  const preparedAt = nowISO();
+  await AsyncStorage.setItem(LAST_BACKUP_KEY, preparedAt).catch(() => {});
+  onPrepared(preparedAt);
 
   await Sharing.shareAsync(filePath, {
     mimeType: 'application/json',
@@ -129,7 +139,7 @@ export function validateBackup(data: unknown): ValidationResult {
 
   const obj = data as Record<string, unknown>;
 
-  if (typeof obj.version !== 'number') {
+  if (typeof obj.version !== 'number' || !Number.isInteger(obj.version) || obj.version < 1) {
     return { valid: false, error: 'Missing or invalid "version" field.' };
   }
 
@@ -168,68 +178,98 @@ export function validateBackup(data: unknown): ValidationResult {
     }
   }
 
-  // Spot-check a few required fields in first entries
-  if (obj.expenses.length > 0) {
-    const first = obj.expenses[0] as Record<string, unknown>;
-    if (typeof first.id !== 'string' || typeof first.amountCents !== 'number') {
-      return { valid: false, error: 'Expense entries have invalid structure.' };
-    }
+  if (!isTimestamp(obj.exportedAt)) {
+    return { valid: false, error: 'The backup has an invalid export date.' };
   }
 
-  if (obj.categories.length > 0) {
-    const first = obj.categories[0] as Record<string, unknown>;
-    if (typeof first.id !== 'string' || typeof first.name !== 'string') {
-      return { valid: false, error: 'Category entries have invalid structure.' };
+  const categoryIds = new Set<string>();
+  for (const entry of obj.categories) {
+    if (!isRecord(entry) || !isNonEmptyString(entry.id) || categoryIds.has(entry.id)
+      || !isNonEmptyString(entry.name) || !isNonEmptyString(entry.icon)
+      || typeof entry.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(entry.color)
+      || !Number.isSafeInteger(entry.sortOrder) || typeof entry.isArchived !== 'boolean'
+      || (entry.isDeleted !== undefined && (entry.isDeleted !== true || !entry.isArchived))
+      || (entry.monthlyLimitCents != null && !isPositiveCents(entry.monthlyLimitCents))
+      || !hasTimestamps(entry)) {
+      return { valid: false, error: 'The backup contains an invalid or duplicate category.' };
     }
+    categoryIds.add(entry.id);
+  }
+
+  const expenseIds = new Set<string>();
+  for (const entry of obj.expenses) {
+    if (!isRecord(entry) || !isNonEmptyString(entry.id) || expenseIds.has(entry.id)
+      || !isNonEmptyString(entry.categoryId) || !categoryIds.has(entry.categoryId)
+      || !isPositiveCents(entry.amountCents) || !isCalendarDate(entry.date)
+      || (entry.note !== null && typeof entry.note !== 'string') || !hasTimestamps(entry)) {
+      return { valid: false, error: 'The backup contains an invalid expense, duplicate ID, or missing category.' };
+    }
+    expenseIds.add(entry.id);
+  }
+
+  const budgetMonths = new Set<string>();
+  for (const entry of obj.budgets) {
+    if (!isRecord(entry) || typeof entry.monthKey !== 'string'
+      || !/^\d{4}-(0[1-9]|1[0-2])$/.test(entry.monthKey) || budgetMonths.has(entry.monthKey)
+      || typeof entry.budgetCents !== 'number' || !Number.isSafeInteger(entry.budgetCents)
+      || entry.budgetCents < 0 || !hasTimestamps(entry)) {
+      return { valid: false, error: 'The backup contains an invalid or duplicate monthly budget.' };
+    }
+    budgetMonths.add(entry.monthKey);
+  }
+
+  const recurringIds = new Set<string>();
+  for (const rule of (obj.recurringExpenses ?? []) as NonNullable<BackupData['recurringExpenses']>) {
+    if (recurringIds.has(rule.id) || !categoryIds.has(rule.categoryId)) {
+      return { valid: false, error: 'The backup contains a duplicate schedule or a schedule with a missing category.' };
+    }
+    recurringIds.add(rule.id);
   }
 
   return { valid: true };
 }
 
-/**
- * Parse and import a JSON backup string into the database.
- * Returns a ValidationResult indicating success or reason for failure.
- */
-export function importFromJSON(
-  db: SQLite.SQLiteDatabase,
-  jsonString: string,
-): ValidationResult {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch {
-    return { valid: false, error: 'Invalid JSON format.' };
-  }
-
-  const validation = validateBackup(parsed);
-  if (!validation.valid) {
-    return validation;
-  }
-
-  importBackupData(db, parsed as BackupData);
-  return { valid: true };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * Open a document picker, read the selected JSON file, and import it.
- * Returns a ValidationResult or null if the user cancelled.
- */
-export async function pickAndImportBackup(
-  db: SQLite.SQLiteDatabase,
-): Promise<ValidationResult | null> {
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isPositiveCents(value: unknown): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isTimestamp(value: unknown): boolean {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function hasTimestamps(entry: Record<string, unknown>): boolean {
+  return isTimestamp(entry.createdAt) && isTimestamp(entry.updatedAt);
+}
+
+export async function pickBackup(): Promise<{ name: string; data: BackupData } | null> {
   const result = await DocumentPicker.getDocumentAsync({
     type: 'application/json',
     copyToCacheDirectory: true,
   });
-
-  if (result.canceled) {
-    return null;
-  }
+  if (result.canceled) return null;
 
   const asset = result.assets[0];
   const contents = await FileSystem.readAsStringAsync(asset.uri, {
     encoding: FileSystem.EncodingType.UTF8,
   });
 
-  return importFromJSON(db, contents);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new Error('The selected file is not valid JSON.');
+  }
+
+  const validation = validateBackup(parsed);
+  if (!validation.valid) throw new Error(validation.error);
+
+  return { name: asset.name, data: parsed as BackupData };
 }

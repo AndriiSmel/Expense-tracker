@@ -20,13 +20,13 @@ export default function EmptyState({
   return (
     <View style={styles.container}>
       <MaterialCommunityIcons
-        name={icon as any}
-        size={64}
-        color={colors.textTertiary}
+        name={icon as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
+        size={24}
+        color={colors.textSecondary}
         style={styles.icon}
       />
-      <Text style={[styles.title, { color: colors.textSecondary }]}>{title}</Text>
-      <Text style={[styles.message, { color: colors.textTertiary }]}>{message}</Text>
+      <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
     </View>
   );
 }
@@ -35,11 +35,11 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing['5xl'],
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
   },
   icon: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   title: {
     ...typography.titleMedium,
@@ -47,8 +47,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   message: {
-    ...typography.body,
+    ...typography.bodySmall,
     textAlign: 'center',
-    lineHeight: 22,
   },
 });

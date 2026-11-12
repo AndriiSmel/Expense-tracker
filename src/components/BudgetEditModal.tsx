@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ThemeColors } from '../core/types';
-import { typography, spacing, radius } from '../theme/theme';
+import { lightColors, typography, spacing, radius } from '../theme/theme';
 import { parseAmountToCents } from '../utils/formatters';
 import { CURRENCY_SYMBOLS } from '../core/constants';
 import { usePreferences } from '../hooks/usePreferences';
@@ -88,7 +88,7 @@ export default function BudgetEditModal({
               disabled={!isValid}
               style={[
                 styles.button,
-                { backgroundColor: isValid ? colors.primary : colors.surfaceSecondary },
+                { backgroundColor: isValid ? lightColors.primary : colors.surfaceSecondary },
               ]}
             >
               <Text

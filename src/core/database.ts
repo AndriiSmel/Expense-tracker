@@ -24,6 +24,19 @@ import { generateId, getToday, nowISO } from '../utils/formatters';
 import { getNextRepeatDate, isCalendarDate, isRepeatFrequency } from './recurrence';
 import { calculateCategoryBreakdown } from '../core/calculations';
 
+const localChangeListeners = new WeakMap<SQLite.SQLiteDatabase, Set<() => void>>();
+
+export function subscribeToLocalChanges(db: SQLite.SQLiteDatabase, listener: () => void): () => void {
+  const listeners = localChangeListeners.get(db) ?? new Set<() => void>();
+  localChangeListeners.set(db, listeners);
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notifyLocalChange(db: SQLite.SQLiteDatabase): void {
+  localChangeListeners.get(db)?.forEach((listener) => listener());
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /** Map a raw row to a Category, converting is_archived int → boolean. */
@@ -37,6 +50,8 @@ function rowToCategory(row: any): Category {
     isArchived: row.is_archived === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(row.is_deleted === 1 ? { isDeleted: true } : {}),
+    ...(row.monthly_limit_cents == null ? {} : { monthlyLimitCents: row.monthly_limit_cents || null }),
   };
 }
 
@@ -103,6 +118,8 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
       icon        TEXT NOT NULL,
       sort_order  INTEGER NOT NULL DEFAULT 0,
       is_archived INTEGER NOT NULL DEFAULT 0,
+      is_deleted  INTEGER NOT NULL DEFAULT 0,
+      monthly_limit_cents INTEGER,
       created_at  TEXT NOT NULL,
       updated_at  TEXT NOT NULL
     );
@@ -165,6 +182,19 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
     'SELECT version FROM schema_version LIMIT 1',
   );
 
+  if (!versionRow || versionRow.version < SCHEMA_VERSION) {
+    db.withTransactionSync(() => {
+      const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(categories)');
+      if (!columns.some((column) => column.name === 'is_deleted')) {
+        db.execSync('ALTER TABLE categories ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!columns.some((column) => column.name === 'monthly_limit_cents')) {
+        db.execSync('ALTER TABLE categories ADD COLUMN monthly_limit_cents INTEGER');
+      }
+      if (versionRow) db.runSync('UPDATE schema_version SET version = ?', SCHEMA_VERSION);
+    });
+  }
+
   if (!versionRow) {
     // First run — seed default categories
     const ts = nowISO();
@@ -184,8 +214,6 @@ export function initDatabase(db: SQLite.SQLiteDatabase): void {
     }
     db.runSync('INSERT INTO schema_version (version) VALUES (?)', SCHEMA_VERSION);
   }
-  // Future migrations would go here:
-  // if (versionRow && versionRow.version < 2) { ... }
 }
 
 // ─── Category CRUD ───────────────────────────────────────────────────
@@ -197,7 +225,7 @@ export function getAllCategories(db: SQLite.SQLiteDatabase): Category[] {
 
 export function getActiveCategories(db: SQLite.SQLiteDatabase): Category[] {
   const rows = db.getAllSync(
-    'SELECT * FROM categories WHERE is_archived = 0 ORDER BY sort_order ASC',
+    'SELECT * FROM categories WHERE is_archived = 0 AND is_deleted = 0 ORDER BY sort_order ASC',
   );
   return rows.map(rowToCategory);
 }
@@ -226,6 +254,7 @@ export function createCategory(
     ts,
     ts,
   );
+  notifyLocalChange(db);
 
   return {
     id,
@@ -266,32 +295,75 @@ export function updateCategory(
   values.push(nowISO());
   values.push(id);
 
-  db.runSync(
-    `UPDATE categories SET ${fields.join(', ')} WHERE id = ?`,
+  const { changes } = db.runSync(
+    `UPDATE categories SET ${fields.join(', ')} WHERE id = ? AND is_deleted = 0`,
     ...values,
   );
+  if (changes) notifyLocalChange(db);
+}
+
+export function setCategoryMonthlyLimit(db: SQLite.SQLiteDatabase, id: string, cents: number | null): void {
+  if (cents !== null && (!Number.isSafeInteger(cents) || cents <= 0)) {
+    throw new Error('Enter a positive monthly limit.');
+  }
+  const { changes } = db.runSync(
+    'UPDATE categories SET monthly_limit_cents = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
+    cents ?? 0, nowISO(), id,
+  );
+  if (changes) notifyLocalChange(db);
 }
 
 export function archiveCategory(
   db: SQLite.SQLiteDatabase,
   id: string,
 ): void {
-  db.runSync(
-    'UPDATE categories SET is_archived = 1, updated_at = ? WHERE id = ?',
+  const { changes } = db.runSync(
+    'UPDATE categories SET is_archived = 1, updated_at = ? WHERE id = ? AND is_deleted = 0',
     nowISO(),
     id,
   );
+  if (changes) notifyLocalChange(db);
 }
 
 export function unarchiveCategory(
   db: SQLite.SQLiteDatabase,
   id: string,
 ): void {
-  db.runSync(
-    'UPDATE categories SET is_archived = 0, updated_at = ? WHERE id = ?',
+  const { changes } = db.runSync(
+    'UPDATE categories SET is_archived = 0, updated_at = ? WHERE id = ? AND is_deleted = 0',
     nowISO(),
     id,
   );
+  if (changes) notifyLocalChange(db);
+}
+
+export function isCategoryInUse(db: SQLite.SQLiteDatabase, id: string): boolean {
+  return Boolean(db.getFirstSync(
+    `SELECT 1 FROM expenses WHERE category_id = ?
+     UNION ALL SELECT 1 FROM recurring_expenses WHERE category_id = ? LIMIT 1`,
+    id, id,
+  ));
+}
+
+export function deleteCategory(db: SQLite.SQLiteDatabase, id: string): boolean {
+  let deleted = false;
+  db.withTransactionSync(() => {
+    if (isCategoryInUse(db, id)) return;
+    // Retain a deletion marker so sync can preserve references from an offline device.
+    const { changes } = db.runSync(
+      'UPDATE categories SET is_deleted = 1, is_archived = 1, updated_at = ? WHERE id = ? AND is_deleted = 0',
+      nowISO(), id,
+    );
+    deleted = changes > 0;
+  });
+  if (deleted) notifyLocalChange(db);
+  return deleted;
+}
+
+function requireAvailableCategory(db: SQLite.SQLiteDatabase, id: string): void {
+  if (db.getFirstSync('SELECT 1 FROM categories WHERE id = ? AND is_deleted = 1', id)) {
+    throw new Error('This category was deleted. Choose another category.');
+  }
 }
 
 // ─── Expense CRUD ────────────────────────────────────────────────────
@@ -319,25 +391,20 @@ export function getExpensesForMonth(
   return rows.map(rowToExpenseWithCategory);
 }
 
+export function getExpenseHistory(db: SQLite.SQLiteDatabase): ExpenseWithCategory[] {
+  return db.getAllSync(
+    `${EXPENSE_WITH_CATEGORY_QUERY} ORDER BY e.date DESC, e.created_at DESC`,
+  ).map(rowToExpenseWithCategory);
+}
+
 export function createExpense(
   db: SQLite.SQLiteDatabase,
   input: ExpenseInput,
+  id = generateId(),
 ): Expense {
-  const id = generateId();
+  requireAvailableCategory(db, input.categoryId);
   const ts = nowISO();
-
-  db.runSync(
-    `INSERT INTO expenses (id, amount_cents, category_id, date, note, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    id,
-    input.amountCents,
-    input.categoryId,
-    input.date,
-    input.note,
-    ts,
-    ts,
-  );
-
+  if (insertExpense(db, input, id, ts)) notifyLocalChange(db);
   return {
     id,
     amountCents: input.amountCents,
@@ -349,12 +416,29 @@ export function createExpense(
   };
 }
 
+function insertExpense(db: SQLite.SQLiteDatabase, input: ExpenseInput, id: string, ts: string): number {
+  const { changes } = db.runSync(
+    `INSERT INTO expenses (id, amount_cents, category_id, date, note, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+    id,
+    input.amountCents,
+    input.categoryId,
+    input.date,
+    input.note,
+    ts,
+    ts,
+  );
+  return changes;
+}
+
 export function updateExpense(
   db: SQLite.SQLiteDatabase,
   id: string,
   input: ExpenseInput,
 ): void {
-  db.runSync(
+  const existing = db.getFirstSync<{ category_id: string }>('SELECT category_id FROM expenses WHERE id = ?', id);
+  if (existing && existing.category_id !== input.categoryId) requireAvailableCategory(db, input.categoryId);
+  const { changes } = db.runSync(
     `UPDATE expenses SET amount_cents = ?, category_id = ?, date = ?, note = ?, updated_at = ?
      WHERE id = ?`,
     input.amountCents,
@@ -364,13 +448,22 @@ export function updateExpense(
     nowISO(),
     id,
   );
+  if (changes) notifyLocalChange(db);
 }
 
 export function deleteExpense(
   db: SQLite.SQLiteDatabase,
   id: string,
 ): void {
-  db.runSync('DELETE FROM expenses WHERE id = ?', id);
+  deleteExpenses(db, [id]);
+}
+
+export function deleteExpenses(db: SQLite.SQLiteDatabase, ids: string[]): void {
+  let changes = 0;
+  db.withTransactionSync(() => {
+    for (const id of ids) changes += db.runSync('DELETE FROM expenses WHERE id = ?', id).changes;
+  });
+  if (changes) notifyLocalChange(db);
 }
 
 // ─── Recurring expenses ───────────────────────────────────────────────
@@ -407,9 +500,11 @@ export function createRecurringExpense(
     throw new Error('Enter a positive amount, a valid frequency, and a start date of today or later.');
   }
   db.withTransactionSync(() => {
+    requireAvailableCategory(db, input.categoryId);
     insertRecurringExpense(db, { ...input, ...frequency, id: generateId(), nextDate: input.date });
     recordDueExpenses(db, today);
   });
+  notifyLocalChange(db);
 }
 
 function recordDueExpenses(db: SQLite.SQLiteDatabase, throughDate: string): number {
@@ -418,7 +513,7 @@ function recordDueExpenses(db: SQLite.SQLiteDatabase, throughDate: string): numb
   for (const rule of due) {
     let date = rule.nextDate;
     while (date <= throughDate) {
-      createExpense(db, { ...rule, date });
+      insertExpense(db, { ...rule, date }, `repeat:${rule.id}:${date}`, nowISO());
       recorded++;
       date = getNextRepeatDate(rule.date, date, rule);
     }
@@ -432,11 +527,13 @@ export function recordDueRecurringExpenses(db: SQLite.SQLiteDatabase, throughDat
   db.withTransactionSync(() => {
     recorded = recordDueExpenses(db, throughDate);
   });
+  if (recorded) notifyLocalChange(db);
   return recorded;
 }
 
 export function stopRecurringExpense(db: SQLite.SQLiteDatabase, id: string): void {
-  db.runSync('DELETE FROM recurring_expenses WHERE id = ?', id);
+  const { changes } = db.runSync('DELETE FROM recurring_expenses WHERE id = ?', id);
+  if (changes) notifyLocalChange(db);
 }
 
 export function getAllExpenses(db: SQLite.SQLiteDatabase): Expense[] {
@@ -492,6 +589,7 @@ export function setBudget(
     ts,
     ts,
   );
+  notifyLocalChange(db);
 }
 
 export function getAllBudgets(db: SQLite.SQLiteDatabase): MonthlyBudget[] {
@@ -502,7 +600,8 @@ export function getAllBudgets(db: SQLite.SQLiteDatabase): MonthlyBudget[] {
 }
 
 export function clearBudgetForMonth(db: SQLite.SQLiteDatabase, monthKey: string): void {
-  db.runSync('DELETE FROM monthly_budgets WHERE month_key = ?', monthKey);
+  const { changes } = db.runSync('DELETE FROM monthly_budgets WHERE month_key = ?', monthKey);
+  if (changes) notifyLocalChange(db);
 }
 
 // ─── Month Summary ───────────────────────────────────────────────────
@@ -534,68 +633,83 @@ export function getMonthSummary(
 
 // ─── Backup / Import ─────────────────────────────────────────────────
 
+const backupRevisions = new WeakMap<SQLite.SQLiteDatabase, number>();
+
+export function getBackupRevision(db: SQLite.SQLiteDatabase): number {
+  return backupRevisions.get(db) ?? 0;
+}
+
 export function importBackupData(
   db: SQLite.SQLiteDatabase,
   data: BackupData,
 ): void {
   db.execSync('BEGIN TRANSACTION;');
   try {
-    db.execSync('DELETE FROM recurring_expenses;');
-    db.execSync('DELETE FROM expenses;');
-    db.execSync('DELETE FROM categories;');
-    db.execSync('DELETE FROM monthly_budgets;');
-
-    // Import categories first (ensures foreign key consistency)
-    for (const cat of data.categories) {
-      db.runSync(
-        `INSERT INTO categories (id, name, color, icon, sort_order, is_archived, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        cat.id,
-        cat.name,
-        cat.color,
-        cat.icon,
-        cat.sortOrder,
-        cat.isArchived ? 1 : 0,
-        cat.createdAt,
-        cat.updatedAt,
-      );
-    }
-
-    // Import expenses
-    for (const exp of data.expenses) {
-      db.runSync(
-        `INSERT INTO expenses (id, amount_cents, category_id, date, note, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        exp.id,
-        exp.amountCents,
-        exp.categoryId,
-        exp.date,
-        exp.note,
-        exp.createdAt,
-        exp.updatedAt,
-      );
-    }
-
-    // Import budgets
-    for (const b of data.budgets) {
-      db.runSync(
-        `INSERT INTO monthly_budgets (month_key, budget_cents, created_at, updated_at)
-         VALUES (?, ?, ?, ?)`,
-        b.monthKey,
-        b.budgetCents,
-        b.createdAt,
-        b.updatedAt,
-      );
-    }
-
-    for (const rule of data.recurringExpenses ?? []) {
-      insertRecurringExpense(db, rule);
-    }
+    replaceBackupRows(db, data);
     recordDueExpenses(db, getToday());
 
     db.execSync('COMMIT;');
+    backupRevisions.set(db, getBackupRevision(db) + 1);
   } catch (error) {
     db.execSync('ROLLBACK;');
     throw error;
+  }
+  notifyLocalChange(db);
+}
+
+/** Replace validated data inside the caller’s SQLite transaction. */
+export function replaceBackupRows(db: SQLite.SQLiteDatabase, data: BackupData): void {
+  db.execSync('DELETE FROM recurring_expenses;');
+  db.execSync('DELETE FROM expenses;');
+  db.execSync('DELETE FROM categories;');
+  db.execSync('DELETE FROM monthly_budgets;');
+
+  // Import categories first (ensures foreign key consistency)
+  for (const cat of data.categories) {
+    db.runSync(
+      `INSERT INTO categories (id, name, color, icon, sort_order, is_archived, created_at, updated_at, is_deleted, monthly_limit_cents)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      cat.id,
+      cat.name,
+      cat.color,
+      cat.icon,
+      cat.sortOrder,
+      cat.isArchived ? 1 : 0,
+      cat.createdAt,
+      cat.updatedAt,
+      cat.isDeleted ? 1 : 0,
+      cat.monthlyLimitCents === undefined ? null : cat.monthlyLimitCents ?? 0,
+    );
+  }
+
+  // Import expenses
+  for (const exp of data.expenses) {
+    db.runSync(
+      `INSERT INTO expenses (id, amount_cents, category_id, date, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      exp.id,
+      exp.amountCents,
+      exp.categoryId,
+      exp.date,
+      exp.note,
+      exp.createdAt,
+      exp.updatedAt,
+    );
+  }
+
+  // Import budgets
+  for (const b of data.budgets) {
+    db.runSync(
+      `INSERT INTO monthly_budgets (month_key, budget_cents, created_at, updated_at)
+       VALUES (?, ?, ?, ?)`,
+      b.monthKey,
+      b.budgetCents,
+      b.createdAt,
+      b.updatedAt,
+    );
+  }
+
+  for (const rule of data.recurringExpenses ?? []) {
+    insertRecurringExpense(db, rule);
   }
 }

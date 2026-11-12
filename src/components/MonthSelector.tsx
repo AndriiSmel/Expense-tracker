@@ -1,6 +1,5 @@
-import React, { useRef } from 'react';
-import { View, TouchableOpacity, Animated, StyleSheet } from 'react-native';
-import { Text } from 'react-native';
+import React from 'react';
+import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemeColors } from '../core/types';
 import { typography, spacing } from '../theme/theme';
@@ -21,38 +20,19 @@ function ArrowButton({
   onPress: () => void;
   color: string;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.85,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 3,
-      useNativeDriver: true,
-    }).start();
-  };
-
   return (
     <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={direction === 'left' ? 'Previous month' : 'Next month'}
       onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       activeOpacity={0.7}
       style={styles.arrowTouchable}
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <MaterialCommunityIcons
-          name={direction === 'left' ? 'chevron-left' : 'chevron-right'}
-          size={28}
-          color={color}
-        />
-      </Animated.View>
+      <MaterialCommunityIcons
+        name={direction === 'left' ? 'chevron-left' : 'chevron-right'}
+        size={28}
+        color={color}
+      />
     </TouchableOpacity>
   );
 }
@@ -92,7 +72,7 @@ const styles = StyleSheet.create({
   },
   monthText: {
     ...typography.titleMedium,
-    minWidth: 160,
+    flex: 1,
     textAlign: 'center',
   },
 });

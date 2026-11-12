@@ -14,15 +14,20 @@ web-build/
 metro-cache/
 .cache/
 .metro-health-check*
+*.tsbuildinfo
 
 # Native project directories (managed Expo workflow)
-ios/
-android/
+/ios/
+/android/
 
 # Native build artifacts
+/.cxx/
 *.ipa
 *.apk
+*.apk.idsig
 *.aab
+*.apks
+/DerivedData/
 
 # Keystores, certificates & provisioning profiles
 *.jks
@@ -37,28 +42,37 @@ android/
 *.provisionprofile
 key.properties
 credentials.json
+local.properties
 
 # Environment variables & secrets
 .env
 .env.*
-!.env.example
 .env*.local
 *.env
+!.env.example
 
 # Local database files & personal expense data / backups
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
+*.db-mj*
 *.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-mj*
 *.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-mj*
 *.csv
 *backup*.json
-*backup*.csv
-expense-backup-*.json
-expenses-*.csv
 
-# Cloud service & store configs with sensitive IDs
+# Google OAuth downloads and platform configuration
+client_secret*.json
+oauth_client*.json
 google-services.json
 GoogleService-Info.plist
 
@@ -100,3 +114,8 @@ temp/
 *.log
 coverage/
 .nyc_output/
+.eslintcache
+/test-results/
+/playwright-report/
+__pycache__/
+*.pyc

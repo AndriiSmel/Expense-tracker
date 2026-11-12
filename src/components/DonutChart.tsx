@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import { nunito } from '../theme/theme';
 import { ThemeColors, CategorySpending } from '../core/types';
 import { formatCurrency } from '../utils/formatters';
 
@@ -150,6 +151,7 @@ export default function DonutChart({
           y={cy - 6}
           textAnchor="middle"
           fontSize={12}
+          fontFamily={nunito.regular.fontFamily}
           fill={colors.textSecondary}
         >
           Total
@@ -159,7 +161,7 @@ export default function DonutChart({
           y={cy + 16}
           textAnchor="middle"
           fontSize={18}
-          fontWeight="700"
+          fontFamily={nunito.bold.fontFamily}
           fill={colors.text}
         >
           {formatCurrency(totalCents, currency)}

@@ -1,0 +1,58 @@
+# Expense Tracker memory
+
+## Original product brief
+
+On 2026-11-12, Andrii shared the [original V1 build prompt](docs/v1-brief.md) and asked to keep it for future chats. It records the original requirements. Use this memory and the current source for later decisions and implementation status.
+
+- **Product direction.** Build a private, personal Android and iOS app with a quiet monthly overview. Keep routine entry to tapping **+**, entering an amount, choosing a category, and saving. Default to today, open the numeric keyboard immediately, and keep date and note secondary. Support one-handed use, safe areas, small screens, larger text, and light and dark modes.
+- **Data and privacy.** Use SQLite and integer cents, preserve existing records across updates, and keep daily use available in airplane mode. The brief calls for bundled assets, no analytics or financial integrations, and exclusion of financial data from automatic OS backups where supported. Manual backups use local JSON and CSV files. Validate a JSON backup before replacement.
+- **Desktop direction.** Keep calculations, types, storage, and UI separable so a future desktop app can import versioned mobile backups without losing financial data.
+- **Later decisions.** The original brief used EUR and excluded recurring expenses and device sync. Subsequent requests added a reusable monthly budget default with per-month overrides, a configurable display currency, and recurring expense schedules. The user approved optional Google Drive sync using their own account and a user-held encryption key. See [project rules](AGENTS.md) for the current privacy and sync constraints.
+- **Verification to carry forward.** Airplane-mode use, larger-text layouts, and OS-level exclusion of the database from automatic backups remain original acceptance criteria. The earlier conversation did not record physical-device verification of those criteria. Live Drive sign-in and sync were also unverified in the handoff below.
+
+## Implementation and decision history
+
+- 2026-11-13, category-limit QA verified Android upgrade, persistence and removal, plus SQLite migration and backup restore. Mixed-version sync now keeps the explicit limit edit's clock separately from legacy category metadata. An independent SQLite test verified order-independent merging and pending removal. Native iOS and live Drive remain unverified.
+
+- 2026-11-13, Andrii selected editable monthly category limits and warnings from the Budget reference. The [finish plan](docs/export-design-finish-plan.md) tracks implementation, visual fidelity, and device checks. The prior Android QA APK passed the 320 dp, 160% text, dark-mode category selection and Save test.
+
+- 2026-11-12, Andrii selected the local HTML export as the target for the native redesign and asked to start the global completion loop. See [design plan](docs/export-design-plan.md) for references, scope, and acceptance checks.
+
+- HTML redesign integration: the four tabs and reference navigation icons are in place. Independent source review checked route parameters, zero-budget overage, and shared pending deletion across Dashboard, Expenses, and Budget. Device screenshots and a fresh signed QA APK are the next acceptance evidence. Native currently uses the system font where the export uses Nunito Sans. Per-category limits in the reference are represented by actual spending shares pending a separate product decision.
+
+- 2026-11-12, Andrii reported that the installed app looked unchanged and that the visual treatment still felt generic. Both local APKs at the time predated the corner change. Treat the approved corner fix separately from a proposed redesign. For the redesign, review a concrete monthly screen and expense sheet concept with Andrii before implementing it.
+
+- 2026-11-12, Andrii approved the quiet ledger look and asked to soften the expense history edges. Round the outside corners of each date group with the existing medium radius and retain hairline dividers between entries on the same date.
+
+- 2026-11-12, implemented Andrii's quiet ledger design for the monthly overview and expense sheet. Use solid surfaces, lead with monthly spending and budget progress, use the category breakdown rows as filters, group history by date with right-aligned amounts, and retain the indigo add action. The expense sheet keeps amount and category first and pins Save above the keyboard. On Android, defer amount focus until the native dialog can accept it and account for the keyboard even when the dialog window does not resize. This supersedes the OpenGlass UI proposals below. SQLite, backup, and Drive sync paths were left intact.
+
+- 2026-11-12 quiet ledger verification: TypeScript and Android/iOS JavaScript bundling passed. Expo lint reported no errors in the changed files (one existing warning for the Drive revision dependency); nine errors remain elsewhere. Tested an Android emulator with sample records in airplane mode, at 320 dp in light and dark modes and at 160% text. The decimal keypad opened automatically, the 30-character category wrapped, and Save stayed reachable. Confirmed add and persistence after force-stop, month navigation, two date groups, search scope, category filtering, budget editing and over-budget feedback, edit, repeat for today, undo, and a recurring expense that did not duplicate on relaunch. The emulator used the refreshed Hermes bundle in a copy of the existing APK because the offline Gradle cache lacked Android dependencies. Native iOS, live Drive, and backup flows were not retested.
+
+- 2026-11-12, Andrii requested an [OpenGlass UI](https://github.com/moekoelueker/open-glass-ui) design comparison for the monthly overview and add-expense sheet. Proposals are subtle glass on the month selector and add button, or additional glass on the budget card and sheet header. Preserve fast offline entry, plan light and dark themes with an Android fallback, and verify larger text. Awaiting design selection before implementation or installation.
+
+- 2026-11-11, a Metro client without the Google Sign-In native module crashed during startup despite the Expo Go guard. Check the React Native module registry before importing Google Sign-In in both the binding and its generator template. Clients without it can start and use local expense tracking while Drive sync is unavailable.
+
+- 2026-11-11, Git ignore rules keep generated root Android/iOS projects, CMake output, local SQLite databases and their sidecar files, expense exports, and downloaded Google OAuth files out of Git. Keep Expo config, the npm lockfile, and Drive sync source and scripts trackable so a checkout can reproduce the build.
+
+- 2026-11-11, Android Drive testing showed the previous standalone APK contained the disabled binding. The native dependencies are now in the lockfile and the adapter is enabled. Load Google Sign-In after the Expo Go guard because that client lacks its native module. The sync-enabled Android release build passed. Google Cloud still needs the Drive API, OAuth test audience, and an Android client registered against the APK signer. Use `apksigner verify --print-certs` to get the SHA-1. Live sign-in and sync remain unverified.
+
+- 2026-11-11, Windows standalone APK builds hit Ninja's 260-character path limit. The previous 240-character CMake setting worked for Reanimated but left too little room to hash the Gesture Handler codegen object path. Windows Expo prebuild now stages the app's CMake build at the repository root in `.cxx` and sets the CMake limit to 250. The ARM64 object path is 236 characters. Verified `:app:assembleRelease` from `android` for all four configured ABIs and confirmed the APK was produced.
+
+- 2026-11-11, user requested category deletion in Settings. Active and archived categories can be deleted after confirmation if they have no linked expenses or recurring schedules. Deletion markers are retained in backups and sync. They keep deleted categories hidden while preserving historical labels and schedules received from offline devices.
+
+- 2026-11-11, user selected optional Google Drive connection, automatic two-way sync with a short explanation, and a manual Sync now action. The app encrypts change batches before upload using the same user-held key on each device. The user replaced polling with automatic sync on saved local changes. Expenses, categories, monthly budgets and recurring schedules sync, while app preferences stay local. Native dependency installation and Google OAuth setup are required to activate the binding; live Drive verification remains pending.
+
+- 2026-11-11, user opened discussion on private sync between their devices, including Google Drive and private GitHub as possible transports. User-only access to readable financial data remains the priority. No provider or implementation has been selected.
+
+- 2026-11-11, user selected undo deletion, expense history search, and backup safeguards. Undo hides expenses and updates totals immediately, then deletes after a six-second window. Pending deletions cannot affect newly restored data. Search covers notes and category names for the selected month or all months. JSON restore validates the full file before preview and retains the existing transactional replace behavior. The export date tracks when the app prepared the file because the system share sheet does not report whether a destination saved it.
+
+- 2026-11-11, user authorized implementation of three features: a history-row repeat icon immediately creates an independent copy for today's local date (same amount/category/note); new expenses default to today with editable date at the bottom; existing expense dates remain editable there. Implemented using existing create/update paths, with no new dependencies. Repeating from a historical month navigates to today's month and clears the category filter so the copy is visible. These selected features supersede the earlier brainstorming-only status; other proposals remain unapproved.
+
+- 2026-11-11, user selected Direction A (ultra-minimalist) for product exploration: prioritize effortless expense entry and a quiet overview. Proceed to Phase 2 brainstorming within that direction; individual features and implementation remain unapproved.
+
+- 2026-11-11, product discussion. Private personal mobile expense tracker using React Native/Expo, TypeScript, SQLite, SVG and Expo Router, with desktop expansion later. Priorities: fast daily entry, monthly spending control, useful insights, minimal UI and maintainable reusable logic. Financial data must stay on device; essential features work offline; exclude cloud services, accounts, analytics, financial integrations and optional online services unless the user explicitly revisits privacy requirements.
+- 2026-11-11, product discovery workflow. The supplied V1 feature list is a specification, not verified implementation. Begin with Phase 1 and ten improvement opportunities, then ask the user which direction to explore before Phase 2. Do not write implementation code during brainstorming. Separate specification gaps from untested risks; record accepted decisions without treating proposals as commitments. No V2 feature selection has been accepted yet.
+
+- 2026-11-11, user instruction. Record durable Expense Tracker context here as it comes up and put standing project rules in [AGENTS.md](AGENTS.md). Use the AI OS vault for shared context and rules.
+
+- 2026-11-11, AI OS link setup. This repository's [AGENTS.md](AGENTS.md) links to the shared vault rules and memory and loads local project memory. The vault's project index links back to this repository on Windows.

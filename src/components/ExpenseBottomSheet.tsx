@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Modal,
   View,
@@ -11,9 +11,9 @@ import {
   StyleSheet,
   Alert,
   Switch,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Category,
   ExpenseWithCategory,
@@ -22,15 +22,15 @@ import {
   RepeatUnit,
   ThemeColors,
 } from '../core/types';
-import { typography, spacing, radius } from '../theme/theme';
-import { getToday, parseAmountToCents } from '../utils/formatters';
+import { nunito, actionFill, actionText, typography, spacing, radius } from '../theme/theme';
+import { formatDate, getToday, parseAmountToCents } from '../utils/formatters';
 import AmountInput from './AmountInput';
 import CategoryGrid from './CategoryGrid';
+import ReferenceIcon from './TabIcon';
 import { isCalendarDate, isRepeatFrequency, REPEAT_UNITS } from '../core/recurrence';
 
 interface ExpenseBottomSheetProps {
   colors: ThemeColors;
-  visible: boolean;
   expense: ExpenseWithCategory | null;
   categories: Category[];
   onSave: (input: ExpenseInput, repeat?: RepeatFrequency) => void;
@@ -40,7 +40,6 @@ interface ExpenseBottomSheetProps {
 
 export default function ExpenseBottomSheet({
   colors,
-  visible,
   expense,
   categories,
   onSave,
@@ -48,35 +47,17 @@ export default function ExpenseBottomSheet({
   onClose,
 }: ExpenseBottomSheetProps) {
   const isEditing = !!expense;
+  const amountInput = useRef<React.ComponentRef<typeof TextInput>>(null);
 
-  const [amountStr, setAmountStr] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [date, setDate] = useState(getToday());
-  const [note, setNote] = useState('');
+  const [amountStr, setAmountStr] = useState(() => expense ? (expense.amountCents / 100).toFixed(2) : '');
+  const [compactAmount, setCompactAmount] = useState(false);
+  const [categoryId, setCategoryId] = useState(expense?.categoryId ?? null);
+  const [date, setDate] = useState(() => expense?.date ?? getToday());
+  const [dateEditorVisible, setDateEditorVisible] = useState(false);
+  const [note, setNote] = useState(expense?.note ?? '');
   const [repeats, setRepeats] = useState(false);
   const [interval, setInterval] = useState('1');
   const [unit, setUnit] = useState<RepeatUnit>('month');
-
-  // Sync state when sheet opens or expense changes
-  useEffect(() => {
-    if (visible) {
-      setRepeats(false);
-      setInterval('1');
-      setUnit('month');
-      if (expense) {
-        setAmountStr((expense.amountCents / 100).toFixed(2));
-        setCategoryId(expense.categoryId);
-        setDate(expense.date);
-        setNote(expense.note ?? '');
-      } else {
-        setAmountStr('');
-        // Start without category selected so user actively chooses
-        setCategoryId(null);
-        setDate(getToday());
-        setNote('');
-      }
-    }
-  }, [visible, expense]);
 
   const cents = parseAmountToCents(amountStr);
   const repeat = !isEditing && repeats ? { interval: Number(interval), unit } : undefined;
@@ -85,14 +66,7 @@ export default function ExpenseBottomSheet({
     && (!repeat || isRepeatFrequency(repeat));
 
   const handleSave = () => {
-    if (!isValid || !categoryId || cents === null) {
-      if (!cents) {
-        Alert.alert('Amount Required', 'Please enter a valid expense amount.');
-      } else if (!categoryId) {
-        Alert.alert('Category Required', 'Please select an expense category.');
-      }
-      return;
-    }
+    if (!isValid || !categoryId || cents === null) return;
 
     try {
       onSave({
@@ -110,21 +84,8 @@ export default function ExpenseBottomSheet({
   const handleDelete = () => {
     if (!expense || !onDelete) return;
 
-    Alert.alert(
-      'Delete Expense',
-      'Are you sure you want to delete this expense? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            onDelete(expense.id);
-            onClose();
-          },
-        },
-      ],
-    );
+    onDelete(expense.id);
+    onClose();
   };
 
   const handleSetQuickDate = (type: 'today' | 'yesterday') => {
@@ -140,56 +101,48 @@ export default function ExpenseBottomSheet({
 
   return (
     <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
+      animationType={Platform.OS === 'ios' ? 'slide' : 'none'}
       onRequestClose={onClose}
+      onShow={() => {
+        // Android's dialog can dispatch onShow before it can accept keyboard focus.
+        if (!isEditing) setTimeout(() => amountInput.current?.focus(), Platform.OS === 'android' ? 150 : 0);
+      }}
     >
-      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
-        {/* Dismiss backdrop on press */}
-        <TouchableWithoutFeedback onPress={onClose}>
-          <View style={StyleSheet.absoluteFill} />
-        </TouchableWithoutFeedback>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardAvoid}
-        >
-          <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
-            {/* Header handle & title */}
+      <SafeAreaView edges={['top']} style={[styles.backdrop, { backgroundColor: colors.surface }]}>
+        <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoid}>
+          <SafeAreaView edges={['bottom']} accessibilityViewIsModal style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
-              <View style={styles.titleRow}>
-                <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                  {isEditing ? 'Edit Expense' : 'Add Expense'}
-                </Text>
-                <TouchableOpacity
-                  onPress={onClose}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={[styles.closeButton, { backgroundColor: colors.surfaceSecondary }]}
-                >
-                  <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                accessibilityRole="button"
+                style={styles.cancelButton}
+              >
+                <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text accessibilityRole="header" style={[styles.sheetTitle, { color: colors.text }]}>
+                {isEditing ? 'Edit expense' : 'Add expense'}
+              </Text>
             </View>
 
             <ScrollView
+              style={styles.form}
               contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+              onLayout={({ nativeEvent }) => setCompactAmount(nativeEvent.layout.height < 300)}
+              keyboardShouldPersistTaps="always"
             >
               {/* 1. Amount Input */}
               <AmountInput
+                compact={compactAmount}
                 colors={colors}
                 value={amountStr}
                 onChange={setAmountStr}
-                autoFocus={!isEditing}
+                inputRef={amountInput}
               />
 
               {/* 2. Category selection */}
               <View style={styles.section}>
                 <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-                  CATEGORY {!categoryId && <Text style={{ color: colors.danger }}>*</Text>}
+                  Category
                 </Text>
                 <CategoryGrid
                   colors={colors}
@@ -199,72 +152,119 @@ export default function ExpenseBottomSheet({
                 />
               </View>
 
+              {/* Optional Note */}
+              <View style={styles.section}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                  Note (optional)
+                </Text>
+                <TextInput
+                  accessibilityLabel="Note (optional)"
+                  style={[
+                    styles.noteInput,
+                    {
+                      backgroundColor: colors.surfaceSecondary,
+                      color: colors.text,
+                    },
+                  ]}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="What was it for?"
+                  placeholderTextColor={colors.textSecondary}
+                  maxLength={100}
+                />
+              </View>
+
               {/* 3. Date selection */}
               <View style={styles.section}>
                 <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-                  {repeats && !isEditing ? 'START DATE' : 'DATE'}
+                  {repeats && !isEditing ? 'Start date' : 'Date'}
                 </Text>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    onPress={() => handleSetQuickDate('today')}
-                    style={[
-                      styles.quickDateBadge,
-                      {
-                        backgroundColor:
-                          date === getToday() ? colors.primaryLight : colors.surfaceSecondary,
-                        borderColor: date === getToday() ? colors.primary : 'transparent',
-                      },
-                    ]}
-                  >
-                    <Text
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: dateEditorVisible }}
+                  onPress={() => setDateEditorVisible((visible) => !visible)}
+                  style={[styles.dateInputWrapper, { backgroundColor: colors.surfaceSecondary }]}
+                >
+                  <ReferenceIcon name="calendar" size={20} color={colors.primary} />
+                  <Text style={[styles.dateInput, { color: colors.text }]}>
+                    {date === getToday() ? `Today, ${formatDate(date)}` : isCalendarDate(date) ? formatDate(date) : date || 'Choose date'}
+                  </Text>
+                  <MaterialCommunityIcons
+                    name={dateEditorVisible ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+                {dateEditorVisible && (
+                  <>
+                    <View style={styles.dateRow}>
+                      <TouchableOpacity
+                        onPress={() => handleSetQuickDate('today')}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: date === getToday() }}
+                        style={[
+                          styles.quickDateBadge,
+                          {
+                            backgroundColor:
+                              date === getToday() ? colors.primaryLight : colors.surfaceSecondary,
+                            borderColor: date === getToday() ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.quickDateText,
+                            { color: colors.text },
+                          ]}
+                        >
+                          Today
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleSetQuickDate('yesterday')}
+                        accessibilityRole="button"
+                        style={[
+                          styles.quickDateBadge,
+                          {
+                            backgroundColor: colors.surfaceSecondary,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.quickDateText, { color: colors.text }]}>
+                          Yesterday
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View
                       style={[
-                        styles.quickDateText,
-                        { color: date === getToday() ? colors.primary : colors.text },
+                        styles.dateInputWrapper,
+                        { backgroundColor: colors.surfaceSecondary },
                       ]}
                     >
-                      Today
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleSetQuickDate('yesterday')}
-                    style={[
-                      styles.quickDateBadge,
-                      {
-                        backgroundColor: colors.surfaceSecondary,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.quickDateText, { color: colors.text }]}>
-                      Yesterday
-                    </Text>
-                  </TouchableOpacity>
-
-                  <View
-                    style={[
-                      styles.dateInputWrapper,
-                      { backgroundColor: colors.surfaceSecondary },
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name="calendar-month-outline"
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                    <TextInput
-                      style={[styles.dateInput, { color: colors.text }]}
-                      value={date}
-                      onChangeText={setDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={10}
-                    />
-                  </View>
-                </View>
+                      <MaterialCommunityIcons
+                        name="calendar-month"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <TextInput
+                        accessibilityLabel="Expense date, year month day"
+                        style={[styles.dateInput, { color: colors.text }]}
+                        value={date}
+                        onChangeText={setDate}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={colors.textSecondary}
+                        maxLength={10}
+                      />
+                    </View>
+                  </>
+                )}
               </View>
 
               {!isValidDate && (
-                <Text style={[styles.repeatHint, { color: colors.danger }]}>
+                <Text accessibilityRole="alert" style={[styles.repeatHint, { color: colors.text }]}>
                   {repeat ? 'Enter a start date of today or later (YYYY-MM-DD).' : 'Enter a valid date (YYYY-MM-DD).'}
                 </Text>
               )}
@@ -272,7 +272,7 @@ export default function ExpenseBottomSheet({
               {!isEditing && (
                 <View style={styles.section}>
                   <View style={styles.repeatToggle}>
-                    <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>REPEAT EXPENSE</Text>
+                    <Text style={[styles.sectionLabel, styles.repeatLabel, { color: colors.textSecondary }]}>Repeat expense</Text>
                     <Switch
                       accessibilityLabel="Repeat expense"
                       value={repeats}
@@ -283,7 +283,7 @@ export default function ExpenseBottomSheet({
                   {repeats && (
                     <>
                       <View style={styles.repeatOptions}>
-                        <Text style={{ color: colors.text }}>Every</Text>
+                        <Text style={[nunito.regular, { color: colors.text }]}>Every</Text>
                         <TextInput
                           accessibilityLabel="Repeat interval"
                           keyboardType="number-pad"
@@ -300,15 +300,23 @@ export default function ExpenseBottomSheet({
                             onPress={() => setUnit(option)}
                             style={[
                               styles.repeatUnit,
-                              { backgroundColor: unit === option ? colors.primaryLight : colors.surfaceSecondary },
+                              {
+                                backgroundColor: unit === option ? colors.primaryLight : colors.surfaceSecondary,
+                                borderColor: unit === option ? colors.primary : colors.border,
+                              },
                             ]}
                           >
-                            <Text style={{ color: unit === option ? colors.primary : colors.text }}>
+                            <Text style={[nunito.regular, { color: colors.text }]}>
                               {Number(interval) === 1 ? option : `${option}s`}
                             </Text>
                           </TouchableOpacity>
                         ))}
                       </View>
+                      {repeat && !isRepeatFrequency(repeat) && (
+                        <Text accessibilityRole="alert" style={[styles.repeatHint, { color: colors.text }]}>
+                          Enter a repeat interval from 1 to 999.
+                        </Text>
+                      )}
                       <Text style={[styles.repeatHint, { color: colors.textSecondary }]}>
                         Due expenses are added when you open the app, starting on the date above.
                       </Text>
@@ -317,66 +325,56 @@ export default function ExpenseBottomSheet({
                 </View>
               )}
 
-              {/* Optional Note */}
-              <View style={styles.section}>
-                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-                  NOTE (OPTIONAL)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.noteInput,
-                    {
-                      backgroundColor: colors.surfaceSecondary,
-                      color: colors.text,
-                    },
-                  ]}
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="e.g. Lunch with team, monthly pass..."
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={100}
-                />
-              </View>
-
-              {/* 5. Save Button */}
-              <TouchableOpacity
-                onPress={handleSave}
-                disabled={!isValid}
-                style={[
-                  styles.saveButton,
-                  {
-                    backgroundColor: isValid ? colors.primary : colors.surfaceSecondary,
-                  },
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.saveButtonText,
-                    { color: isValid ? '#FFFFFF' : colors.textTertiary },
-                  ]}
-                >
-                  {isEditing ? 'Save Changes' : repeat ? 'Save Recurring Expense' : 'Save Expense'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* 6. Delete Button (Edit mode) */}
               {isEditing && (
                 <TouchableOpacity
                   onPress={handleDelete}
+                  accessibilityRole="button"
                   style={[styles.deleteButton, { borderColor: colors.danger }]}
                   activeOpacity={0.7}
                 >
                   <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
-                  <Text style={[styles.deleteButtonText, { color: colors.danger }]}>
-                    Delete Expense
-                  </Text>
+                  <Text style={[styles.deleteButtonText, { color: colors.text }]}>Delete expense</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
-          </View>
+            <View style={styles.footer}>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={!isValid}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !isValid }}
+                style={[
+                  styles.saveButton,
+                  {
+                    backgroundColor: isValid ? actionFill : colors.surfaceSecondary,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <ReferenceIcon
+                  name="save"
+                  size={22}
+                  color={isValid ? actionText : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.saveButtonText,
+                    { color: isValid ? actionText : colors.textSecondary },
+                  ]}
+                >
+                  {isEditing ? 'Save changes' : repeat ? 'Save recurring expense' : 'Save expense'}
+                </Text>
+              </TouchableOpacity>
+              <View style={styles.privacy}>
+                <ReferenceIcon name="lock" size={13} color={colors.textSecondary} />
+                <Text style={[typography.caption, styles.privacyText, { color: colors.textSecondary }]}>
+                  Saved on this device
+                </Text>
+              </View>
+            </View>
+          </SafeAreaView>
         </KeyboardAvoidingView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -387,6 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  repeatLabel: { flexShrink: 1 },
   repeatOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -394,7 +393,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   intervalInput: {
+    ...nunito.regular,
     minWidth: 44,
+    minHeight: 44,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     textAlign: 'center',
@@ -403,88 +404,79 @@ const styles = StyleSheet.create({
   repeatUnit: {
     padding: spacing.sm,
     borderRadius: radius.md,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   repeatHint: {
     ...typography.caption,
     marginTop: spacing.xs,
   },
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  keyboardAvoid: {
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    maxHeight: '90%',
-    paddingBottom: Platform.OS === 'ios' ? spacing['3xl'] : spacing.xl,
-  },
+  backdrop: { flex: 1 },
+  keyboardAvoid: { flex: 1 },
+  sheet: { flex: 1 },
   sheetHeader: {
-    alignItems: 'center',
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  dragHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    marginBottom: spacing.sm,
-  },
-  titleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
+    paddingHorizontal: spacing['2xl'],
+    paddingBottom: spacing.sm,
+    columnGap: spacing.sm,
   },
   sheetTitle: {
     ...typography.titleLarge,
+    ...nunito.black,
+    flex: 1,
+    textAlign: 'center',
+    marginRight: spacing['5xl'],
   },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
+  cancelButton: {
+    minHeight: 44,
+    minWidth: 44,
     justifyContent: 'center',
   },
+  cancelText: { ...typography.body, ...nunito.bold },
+  form: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing['2xl'],
+    paddingBottom: spacing.lg,
   },
   section: {
     marginVertical: spacing.sm,
   },
   sectionLabel: {
     ...typography.caption,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-    letterSpacing: 0.5,
+    ...nunito.black,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   dateRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   quickDateBadge: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   quickDateText: {
     ...typography.bodySmall,
-    fontWeight: '600',
+    ...nunito.semibold,
   },
   dateInputWrapper: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: Platform.OS === 'ios' ? spacing.sm : 2,
-    borderRadius: radius.md,
-    gap: spacing.xs,
+    marginTop: spacing.sm,
+    minHeight: 48,
+    borderRadius: radius.full,
+    gap: spacing.md,
   },
   dateInput: {
     flex: 1,
@@ -495,19 +487,33 @@ const styles = StyleSheet.create({
     ...typography.body,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
   },
   saveButton: {
-    marginTop: spacing.lg,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md + 2,
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
+    flexDirection: 'row',
+    gap: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveButtonText: {
-    ...typography.titleMedium,
-    fontWeight: '700',
+    ...typography.body,
+    ...nunito.black,
+    flexShrink: 1,
+    textAlign: 'center',
   },
+  footer: { paddingHorizontal: spacing['2xl'], paddingVertical: spacing.sm },
+  privacy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  privacyText: { flexShrink: 1 },
   deleteButton: {
     flexDirection: 'row',
     marginTop: spacing.md,
@@ -520,6 +526,7 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     ...typography.body,
-    fontWeight: '600',
+    ...nunito.semibold,
+    flexShrink: 1,
   },
 });

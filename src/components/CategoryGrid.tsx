@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Category, ThemeColors } from '../core/types';
-import { typography, spacing, radius } from '../theme/theme';
+import { nunito, actionFill, actionText, typography, spacing, radius } from '../theme/theme';
 
 interface CategoryGridProps {
   colors: ThemeColors;
@@ -17,6 +17,9 @@ export default function CategoryGrid({
   selectedId,
   onSelect,
 }: CategoryGridProps) {
+  const { width, fontScale } = useWindowDimensions();
+  const columns = width / fontScale >= 350 ? 3 : width / fontScale >= 215 ? 2 : 1;
+  const itemWidth = (width - spacing['2xl'] * 2 - spacing.md * (columns - 1)) / columns;
   return (
     <View style={styles.grid}>
       {categories.map((category) => {
@@ -24,16 +27,16 @@ export default function CategoryGrid({
         return (
           <TouchableOpacity
             key={category.id}
+            accessibilityRole="button"
+            accessibilityLabel={category.name}
+            accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(category.id)}
             activeOpacity={0.7}
             style={[
               styles.item,
-              isSelected && {
-                backgroundColor: category.color + '1A',
-                borderColor: category.color,
-              },
-              !isSelected && {
-                borderColor: 'transparent',
+              {
+                width: itemWidth,
+                backgroundColor: isSelected ? actionFill : colors.surfaceSecondary,
               },
             ]}
           >
@@ -41,25 +44,23 @@ export default function CategoryGrid({
               style={[
                 styles.iconCircle,
                 {
-                  backgroundColor: isSelected ? category.color : category.color + '22',
+                  backgroundColor: isSelected ? 'transparent' : colors.surface,
                 },
               ]}
             >
               <MaterialCommunityIcons
-                name={category.icon as any}
+                name={category.icon as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
                 size={22}
-                color={isSelected ? '#FFFFFF' : category.color}
+                color={isSelected ? actionText : category.color}
               />
             </View>
             <Text
               style={[
                 styles.name,
                 {
-                  color: isSelected ? category.color : colors.text,
-                  fontWeight: isSelected ? '600' : '400',
+                  color: isSelected ? actionText : colors.text,
                 },
               ]}
-              numberOfLines={1}
             >
               {category.name}
             </Text>
@@ -74,27 +75,26 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    justifyContent: 'flex-start',
+    gap: spacing.md,
   },
   item: {
-    width: '31%', // 3 columns nicely fitting titles
     alignItems: 'center',
+    minHeight: 76,
+    gap: spacing.xs,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
+    borderRadius: spacing['2xl'],
   },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   name: {
-    ...typography.caption,
+    ...typography.bodySmall,
+    ...nunito.bold,
     textAlign: 'center',
   },
 });

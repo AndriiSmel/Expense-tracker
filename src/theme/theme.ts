@@ -5,17 +5,20 @@
 
 import { ThemeColors } from '../core/types';
 
+export const actionFill = '#F37F46';
+export const actionText = '#221108';
+
 // ─── Colors ──────────────────────────────────────────────────────────
 
 export const lightColors: ThemeColors = {
-  background: '#F5F5F7',
+  background: '#F2F2F7',
   surface: '#FFFFFF',
   surfaceSecondary: '#F0F0F2',
-  text: '#1A1A2E',
+  text: '#1C1C1E',
   textSecondary: '#6B7280',
   textTertiary: '#9CA3AF',
-  primary: '#4F46E5',
-  primaryLight: '#EEF2FF',
+  primary: '#A83D13',
+  primaryLight: '#FFF0E8',
   border: '#E5E7EB',
   danger: '#EF4444',
   dangerLight: '#FEF2F2',
@@ -33,8 +36,8 @@ export const darkColors: ThemeColors = {
   text: '#F1F1F3',
   textSecondary: '#9CA3AF',
   textTertiary: '#6B7280',
-  primary: '#6366F1',
-  primaryLight: '#1E1B4B',
+  primary: '#F69D74',
+  primaryLight: '#44271D',
   border: '#2D2D44',
   danger: '#F87171',
   dangerLight: '#3B1111',
@@ -71,43 +74,50 @@ export const radius = {
 
 // ─── Typography ──────────────────────────────────────────────────────
 
+export const nunito = {
+  regular: { fontFamily: 'NunitoSans-Regular' },
+  semibold: { fontFamily: 'NunitoSans-SemiBold' },
+  bold: { fontFamily: 'NunitoSans-Bold' },
+  black: { fontFamily: 'NunitoSans-Black' },
+} as const;
+
 export const typography = {
   /** Large financial amounts */
   displayLarge: {
     fontSize: 32,
-    fontWeight: '700' as const,
+    ...nunito.bold,
     letterSpacing: -0.5,
   },
   /** Medium financial amounts */
   displayMedium: {
     fontSize: 24,
-    fontWeight: '700' as const,
+    ...nunito.bold,
     letterSpacing: -0.3,
   },
   /** Section titles */
   titleLarge: {
     fontSize: 20,
-    fontWeight: '600' as const,
+    ...nunito.semibold,
   },
   /** Card titles */
   titleMedium: {
     fontSize: 17,
-    fontWeight: '600' as const,
+    ...nunito.semibold,
   },
   /** Regular body text */
   body: {
     fontSize: 15,
-    fontWeight: '400' as const,
+    ...nunito.regular,
   },
   /** Secondary labels */
   bodySmall: {
     fontSize: 13,
-    fontWeight: '400' as const,
+    ...nunito.regular,
   },
   /** Small captions */
   caption: {
     fontSize: 11,
-    fontWeight: '500' as const,
+    ...nunito.regular,
     letterSpacing: 0.3,
   },
 } as const;

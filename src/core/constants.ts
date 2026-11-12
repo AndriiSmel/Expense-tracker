@@ -52,7 +52,7 @@ export const BACKUP_VERSION = 2;
 // ─── Database ────────────────────────────────────────────────────────
 
 export const DB_NAME = 'expense-tracker.db';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 3;
 
 // ─── Category Color Palette (for new categories) ─────────────────────
 

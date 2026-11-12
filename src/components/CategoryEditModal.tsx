@@ -13,7 +13,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Category, CategoryInput, ThemeColors } from '../core/types';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../core/constants';
-import { typography, spacing, radius } from '../theme/theme';
+import { nunito, lightColors, typography, spacing, radius } from '../theme/theme';
 
 interface CategoryEditModalProps {
   colors: ThemeColors;
@@ -202,7 +202,7 @@ export default function CategoryEditModal({
                 style={[
                   styles.saveButton,
                   {
-                    backgroundColor: isValid ? colors.primary : colors.surfaceSecondary,
+                    backgroundColor: isValid ? lightColors.primary : colors.surfaceSecondary,
                   },
                 ]}
               >
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     ...typography.caption,
-    fontWeight: '600',
+    ...nunito.semibold,
     marginBottom: spacing.xs,
     letterSpacing: 0.5,
   },
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     ...typography.titleMedium,
-    fontWeight: '700',
+    ...nunito.bold,
   },
 });
 

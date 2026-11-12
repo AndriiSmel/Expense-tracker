@@ -27,6 +27,17 @@
       "expo-sqlite",
       "expo-document-picker",
       [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/NunitoSans-Regular.ttf",
+            "./assets/fonts/NunitoSans-SemiBold.ttf",
+            "./assets/fonts/NunitoSans-Bold.ttf",
+            "./assets/fonts/NunitoSans-Black.ttf"
+          ]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#4F46E5",
@@ -38,11 +49,15 @@
       "enabled": false
     },
     "extra": {
-      "eas": {},
+      "eas": {
+        "projectId": "9739022e-9f64-4f8e-b033-0d52ec798a63"
+      },
       "router": {
-        "origin": false
+        "origin": false,
+        "asyncRoutes": {
+          "web": true
+        }
       }
     }
   }
 }
-

@@ -1,184 +1,107 @@
-import React, { useEffect, useRef } from 'react';
-import { View, TouchableOpacity, Animated, StyleSheet, Text } from 'react-native';
+import React from 'react';
+import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import ReferenceIcon from './TabIcon';
 import { ThemeColors } from '../core/types';
-import { typography, spacing, radius, shadows } from '../theme/theme';
+import { usePreferences } from '../hooks/usePreferences';
+import { nunito, actionFill, actionText, spacing, radius } from '../theme/theme';
 import { formatCurrency } from '../utils/formatters';
 
 interface BudgetCardProps {
   colors: ThemeColors;
   budgetCents: number;
   spentCents: number;
+  previousSpentCents: number;
   onEditPress: () => void;
 }
 
-export default function BudgetCard({
-  colors,
-  budgetCents,
-  spentCents,
-  onEditPress,
-}: BudgetCardProps) {
+export default function BudgetCard({ colors, budgetCents, spentCents, previousSpentCents, onEditPress }: BudgetCardProps) {
   const { currency } = usePreferences();
-  const animatedWidth = useRef(new Animated.Value(0)).current;
-
-  const percentage = budgetCents > 0 ? (spentCents / budgetCents) * 100 : 0;
-  const remainingCents = budgetCents - spentCents;
-  const isExceeded = remainingCents < 0;
-  const isWarning = percentage >= 80 && !isExceeded;
-  const clampedPercentage = Math.min(percentage, 100);
-
-  useEffect(() => {
-    Animated.timing(animatedWidth, {
-      toValue: clampedPercentage,
-      duration: 600,
-      useNativeDriver: false,
-    }).start();
-  }, [clampedPercentage]);
-
-  const barColor = isExceeded
-    ? colors.danger
-    : isWarning
-    ? colors.warning
-    : colors.success;
-
-  const barBgColor = isExceeded
-    ? colors.dangerLight
-    : isWarning
-    ? colors.warningLight
-    : colors.successLight;
+  const remaining = budgetCents - spentCents;
+  const budgetUsed = budgetCents > 0 ? spentCents / budgetCents : spentCents > 0 ? 1 : 0;
+  const progress = Math.min(budgetUsed, 1) * 100;
+  const change = previousSpentCents > 0 ? Math.round((spentCents / previousSpentCents - 1) * 100) : null;
+  const budgetLabel = formatCurrency(budgetCents, currency);
+  const spendLabel = formatCurrency(spentCents, currency);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface }, shadows.card]}>
-      <View style={styles.headerRow}>
-        <View style={styles.titleContainer}>
-          <Text style={[styles.title, { color: colors.textSecondary }]}>Monthly Budget</Text>
-          {isExceeded ? (
-            <View style={[styles.badge, { backgroundColor: colors.dangerLight }]}>
-              <MaterialCommunityIcons name="alert-circle" size={12} color={colors.danger} />
-              <Text style={[styles.badgeText, { color: colors.danger }]}>Exceeded</Text>
-            </View>
-          ) : isWarning ? (
-            <View style={[styles.badge, { backgroundColor: colors.warningLight }]}>
-              <MaterialCommunityIcons name="alert" size={12} color={colors.warning} />
-              <Text style={[styles.badgeText, { color: colors.warning }]}>80% Used</Text>
-            </View>
-          ) : null}
+    <View style={styles.stack}>
+      <View style={styles.hero}>
+        <View pointerEvents="none" style={styles.watermark}>
+          <ReferenceIcon name="walletMoney" size={100} color={actionText} />
         </View>
+        <View style={styles.inline}>
+          <ReferenceIcon name="calendar" size={18} color={actionText} />
+          <Text accessibilityRole="header" style={[styles.eyebrow, { color: actionText }]}>Total spent this month</Text>
+        </View>
+        <Text style={styles.total} accessibilityLabel={spendLabel}>
+          {spendLabel.slice(0, -3)}<Text style={styles.decimal}>{spendLabel.slice(-3)}</Text>
+        </Text>
+        {change !== null && (
+          <View style={[styles.inline, styles.change]}>
+            <MaterialCommunityIcons name={change > 0 ? 'arrow-up' : change < 0 ? 'arrow-down' : 'minus'} size={16} color={actionText} />
+            <Text style={styles.changeText}>
+              {change === 0 ? 'Same as previous month' : `${Math.abs(change)}% ${change < 0 ? 'less' : 'more'} than previous month`}
+            </Text>
+          </View>
+        )}
+      </View>
 
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={`Edit monthly budget, ${budgetLabel}`}
           onPress={onEditPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.editButton}
+          style={styles.budgetHeading}
         >
-          <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.textSecondary} />
+          <View style={[styles.budgetIcon, { backgroundColor: colors.background }]}>
+            <ReferenceIcon name="pie" size={20} color={colors.success} />
+          </View>
+          <View style={styles.budgetTitle}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>{remaining < 0 ? 'Over budget' : 'Remaining budget'}</Text>
+            <Text style={[styles.balance, { color: colors.text }]}>{formatCurrency(Math.abs(remaining), currency)}</Text>
+          </View>
+          {budgetCents > 0 && (
+            <Text style={[styles.pill, { color: colors.text, backgroundColor: remaining < 0 ? colors.dangerLight : colors.successLight }]}>
+              {remaining < 0 ? 'Over budget' : `${Math.round((1 - budgetUsed) * 100)}% left`}
+            </Text>
+          )}
         </TouchableOpacity>
-      </View>
-
-      <Text style={[styles.amount, { color: colors.text }]}>
-        {formatCurrency(budgetCents, currency)}
-      </Text>
-
-      {/* Progress bar */}
-      <View style={[styles.progressTrack, { backgroundColor: barBgColor }]}>
-        <Animated.View
-          style={[
-            styles.progressFill,
-            {
-              backgroundColor: barColor,
-              width: animatedWidth.interpolate({
-                inputRange: [0, 100],
-                outputRange: ['0%', '100%'],
-              }),
-            },
-          ]}
-        />
-      </View>
-
-      <View style={styles.summaryRow}>
-        <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
-          Spent: {formatCurrency(spentCents, currency)} ({Math.round(percentage)}%)
-        </Text>
-        <Text
-          style={[
-            styles.summaryText,
-            {
-              color: isExceeded ? colors.danger : colors.textSecondary,
-              fontWeight: isExceeded ? '700' : '400',
-            },
-          ]}
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel="Monthly budget used"
+          accessibilityValue={{ text: budgetCents > 0 ? `${Math.round(budgetUsed * 100)}%` : 'Budget is zero' }}
+          style={[styles.track, { backgroundColor: colors.background }]}
         >
-          {isExceeded
-            ? `Over by: ${formatCurrency(Math.abs(remainingCents), currency)}`
-            : `Remaining: ${formatCurrency(remainingCents, currency)}`}
-        </Text>
+          <View style={[styles.fill, { backgroundColor: remaining < 0 ? colors.danger : actionFill, width: `${progress}%` }]} />
+        </View>
+        <View style={styles.totals}>
+          <Text style={[nunito.regular, { color: colors.textSecondary }]}>{spendLabel} spent</Text>
+          <Text style={[nunito.regular, { color: colors.textSecondary }]}>of {budgetLabel}</Text>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.sm,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  title: {
-    ...typography.bodySmall,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-  },
-  badgeText: {
-    ...typography.caption,
-    fontWeight: '700',
-    fontSize: 10,
-  },
-  editButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  amount: {
-    ...typography.displayMedium,
-    marginBottom: spacing.md,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 5,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryText: {
-    ...typography.bodySmall,
-  },
+  stack: { marginHorizontal: spacing.lg, gap: spacing.lg },
+  hero: { padding: spacing['2xl'], borderRadius: 32, backgroundColor: actionFill, overflow: 'hidden', gap: spacing.md },
+  watermark: { position: 'absolute', top: 4, right: 6, opacity: 0.12 },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  eyebrow: { fontSize: 12, ...nunito.black, letterSpacing: 0.8, textTransform: 'uppercase' },
+  total: { fontSize: 52, ...nunito.black, letterSpacing: -2, fontVariant: ['tabular-nums'], color: actionText },
+  decimal: { fontSize: 24, letterSpacing: -0.5 },
+  change: { alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: '#FFFFFF55', borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  changeText: { color: actionText, fontSize: 13, ...nunito.bold, flexShrink: 1 },
+  card: { borderRadius: 28, padding: spacing.xl, gap: spacing.sm },
+  budgetHeading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+  budgetIcon: { width: 40, height: 40, borderRadius: radius.full, justifyContent: 'center', alignItems: 'center' },
+  budgetTitle: { flexGrow: 1, flexShrink: 1 },
+  balance: { fontSize: 21, ...nunito.black, fontVariant: ['tabular-nums'] },
+  pill: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, fontSize: 12, ...nunito.black },
+  track: { height: 8, borderRadius: radius.full, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: radius.full },
+  totals: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: spacing.sm },
 });
-import { usePreferences } from '../hooks/usePreferences';
