@@ -5,6 +5,7 @@
 
 import { ThemeColors } from '../core/types';
 
+export const heroFill = '#D96632';
 export const actionFill = '#F37F46';
 export const actionText = '#221108';
 

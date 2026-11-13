@@ -12,6 +12,10 @@ On 2026-11-12, Andrii shared the [original V1 build prompt](docs/v1-brief.md) an
 
 ## Implementation and decision history
 
+- 2026-11-13, Andrii requested white primary amounts on the orange Dashboard and Budget cards, removal of the Budget hero's Edit shortcut, and removal of the shared header's Settings shortcut. Keep the inline budget editor and bottom Settings tab.
+
+- 2026-11-13, EAS preview build failed because `npm ci` found missing lockfile entries. Regenerated the lockfile and verified a clean `npm ci --include=dev`. The separate Windows Reanimated target compiled on retry with two Ninja jobs. The full `:app:assembleRelease --max-workers=2 -PreactNativeArchitectures=arm64-v8a` build then passed and the APK signature verified. The original Ninja error was not reproduced and the cloud build was not rerun.
+
 - 2026-11-13, category-limit QA verified Android upgrade, persistence and removal, plus SQLite migration and backup restore. Mixed-version sync now keeps the explicit limit edit's clock separately from legacy category metadata. An independent SQLite test verified order-independent merging and pending removal. Native iOS and live Drive remain unverified.
 
 - 2026-11-13, Andrii selected editable monthly category limits and warnings from the Budget reference. The [finish plan](docs/export-design-finish-plan.md) tracks implementation, visual fidelity, and device checks. The prior Android QA APK passed the 320 dp, 160% text, dark-mode category selection and Save test.

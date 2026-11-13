@@ -216,7 +216,6 @@ export function ExpenseOverview({ ledger = false }: { ledger?: boolean }) {
           colors={colors}
           title={ledger ? 'Expenses' : 'Hello'}
           subtitle={ledger ? undefined : new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
-          onSettingsPress={() => router.push('/settings')}
         />
 
         <ExpenseList

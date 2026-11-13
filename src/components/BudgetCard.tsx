@@ -4,7 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ReferenceIcon from './TabIcon';
 import { ThemeColors } from '../core/types';
 import { usePreferences } from '../hooks/usePreferences';
-import { nunito, actionFill, actionText, spacing, radius } from '../theme/theme';
+import { nunito, actionFill, actionText, heroFill, spacing, radius } from '../theme/theme';
 import { formatCurrency } from '../utils/formatters';
 
 interface BudgetCardProps {
@@ -87,11 +87,11 @@ export default function BudgetCard({ colors, budgetCents, spentCents, previousSp
 
 const styles = StyleSheet.create({
   stack: { marginHorizontal: spacing.lg, gap: spacing.lg },
-  hero: { padding: spacing['2xl'], borderRadius: 32, backgroundColor: actionFill, overflow: 'hidden', gap: spacing.md },
+  hero: { padding: spacing['2xl'], borderRadius: 32, backgroundColor: heroFill, overflow: 'hidden', gap: spacing.md },
   watermark: { position: 'absolute', top: 4, right: 6, opacity: 0.12 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   eyebrow: { fontSize: 12, ...nunito.black, letterSpacing: 0.8, textTransform: 'uppercase' },
-  total: { fontSize: 52, ...nunito.black, letterSpacing: -2, fontVariant: ['tabular-nums'], color: actionText },
+  total: { fontSize: 52, ...nunito.black, letterSpacing: -2, fontVariant: ['tabular-nums'], color: '#FFFFFF' },
   decimal: { fontSize: 24, letterSpacing: -0.5 },
   change: { alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: '#FFFFFF55', borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   changeText: { color: actionText, fontSize: 13, ...nunito.bold, flexShrink: 1 },

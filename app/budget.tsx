@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,7 +14,7 @@ import { useDriveSync } from '../src/hooks/useDriveSync';
 import { useExpenses } from '../src/hooks/useExpenses';
 import { usePendingExpenseDeletion } from '../src/hooks/usePendingExpenseDeletion';
 import { usePreferences } from '../src/hooks/usePreferences';
-import { nunito, actionFill, actionText } from '../src/theme/theme';
+import { nunito, actionFill, actionText, heroFill } from '../src/theme/theme';
 import { formatCurrency, formatCurrencyCompact, formatMonthKey, getCurrentMonthKey, parseAmountToCents, shiftMonth } from '../src/utils/formatters';
 
 export default function BudgetScreen() {
@@ -28,8 +28,6 @@ export default function BudgetScreen() {
   const [draft, setDraft] = useState<string | null>(null);
   const [categoryDraft, setCategoryDraft] = useState<{ id: string; value: string } | null>(null);
   const [categories, setCategories] = useState(() => getAllCategories(db));
-  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
-  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const { budget, setBudget, clearBudget, refresh: refreshBudget } = useBudget(month);
   const { expenses, refresh: refreshExpenses } = useExpenses(month);
 
@@ -109,7 +107,7 @@ export default function BudgetScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.screen, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <View style={styles.grow}>
               <Text style={[styles.kicker, { color: colors.textSecondary }]}>{formatMonthKey(month)}</Text>
@@ -123,26 +121,12 @@ export default function BudgetScreen() {
             </Pressable>
           </View>
 
-          <View style={[styles.hero, { backgroundColor: accent }]}>
+          <View style={[styles.hero, { backgroundColor: heroFill }]}>
             <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={styles.watermark}>
               <ReferenceIcon name="budget" size={96} color={heroText} />
             </View>
-            <View style={styles.heroHeader}>
-              <Text style={[styles.kicker, styles.grow, { color: heroText }]}>Monthly budget</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Edit monthly budget"
-                onPress={() => {
-                  scroll.current?.scrollToEnd({ animated: false });
-                  input.current?.focus();
-                }}
-                style={styles.edit}
-              >
-                <ReferenceIcon name="edit" size={16} color={heroText} />
-                <Text style={[styles.bold, { color: heroText }]}>Edit</Text>
-              </Pressable>
-            </View>
-            <Text style={[styles.heroAmount, { color: heroText }]}>{money(budgetCents)}</Text>
+            <Text style={[styles.kicker, { color: heroText }]}>Monthly budget</Text>
+            <Text style={styles.heroAmount}>{money(budgetCents)}</Text>
           </View>
 
           <View style={[styles.card, { backgroundColor: cardColor }]}>
@@ -270,7 +254,6 @@ export default function BudgetScreen() {
             <View style={[styles.inputRow, { backgroundColor: colors.surface }]}>
               <Text style={[styles.bold, { color: colors.textSecondary }]}>{CURRENCY_SYMBOLS[currency]}</Text>
               <TextInput
-                ref={input}
                 accessibilityLabel="Monthly budget amount"
                 value={value}
                 onChangeText={setDraft}
@@ -305,9 +288,7 @@ const styles = StyleSheet.create({
   arrow: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   hero: { borderRadius: 32, padding: 24, gap: 12, overflow: 'hidden' },
   watermark: { position: 'absolute', right: 8, top: 4, opacity: 0.15 },
-  heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  edit: { minHeight: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.3)', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  heroAmount: { fontSize: 54, ...nunito.black, letterSpacing: -2, fontVariant: ['tabular-nums'] },
+  heroAmount: { color: '#FFFFFF', fontSize: 54, ...nunito.black, letterSpacing: -2, fontVariant: ['tabular-nums'] },
   card: { borderRadius: 28, padding: 20, gap: 10 },
   totals: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between' },
   total: { flexGrow: 1, flexShrink: 1, gap: 3 },
